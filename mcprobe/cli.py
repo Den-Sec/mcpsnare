@@ -2,8 +2,19 @@ import argparse
 import asyncio
 import os
 import shlex
+import sys
 
 from mcprobe.report.render import to_json, to_sarif, to_markdown
+
+
+def aggressive_note(aggressive: bool) -> str | None:
+    """Honest note for default (non-aggressive) scans: blocking time-based probes
+    were skipped, so an empty report must not be read as 'secure'. None when
+    aggressive (nothing was skipped)."""
+    if aggressive:
+        return None
+    return ("[i] Default mode: blocking time-based probes were skipped. "
+            "Re-run with --aggressive to add time-based command-injection detection.")
 
 
 def build_parser():
@@ -63,9 +74,12 @@ async def _run(args):
     if args.output in renderers:
         print(renderers[args.output](findings))
     else:
-        print(f"\n{len(findings)} confirmed finding(s):")
+        print(f"\n{len(findings)} finding(s):")
         for f in findings:
             print(f"  [{f.severity.value.upper()}] {f.title}  ({f.confidence.value})")
+    note = aggressive_note(args.aggressive)
+    if note:
+        print(note, file=sys.stderr)
 
 
 def main():
