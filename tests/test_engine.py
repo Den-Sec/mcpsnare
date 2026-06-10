@@ -248,3 +248,59 @@ async def test_engine_plumbs_aggressive_to_checks():
     finally:
         del REGISTRY["spyagg"]
     assert captured["aggressive"] is True
+
+
+class ShellLikeOOB:
+    """Records issued tokens+urls; a fake shell delivers a token's callback when it
+    'executes' the matching payload."""
+    def __init__(self):
+        self.issued = {}      # token -> url
+        self.delivered = set()
+    def new_token(self):
+        t = f"tok{len(self.issued) + 1}"
+        url = f"http://oob/{t}"
+        self.issued[t] = url
+        return t, url
+    def interactions(self, token):
+        return [{"path": f"/{token}"}] if token in self.delivered else []
+
+
+def _shell_session(oob, recognizes):
+    """A tool whose simulated shell 'executes' a payload (delivering its OOB callback)
+    only if the payload contains one of `recognizes` (OS-specific command shapes)."""
+    class _Sess:
+        async def list_tools(self):
+            return [ToolInfo("run", "", {"type": "object",
+                    "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]})]
+        async def call_tool(self, name, args):
+            cmd = args.get("cmd", "")
+            if any(r in cmd for r in recognizes):
+                for tok, url in oob.issued.items():
+                    if url in cmd:
+                        oob.delivered.add(tok)
+            return "ran"
+    return _Sess()
+
+
+@pytest.mark.asyncio
+async def test_engine_confirms_powershell_oob():
+    oob = ShellLikeOOB()
+    sess = _shell_session(oob, recognizes=["iwr ", "curl.exe "])   # PowerShell-only shell
+    findings = await scan_session(sess, oob=oob, transport="stdio", check_ids=["cmd_injection"],
+                                  oob_poll_interval=0.001, oob_timeout=0.05)
+    confirmed = [f for f in findings
+                 if f.check == "cmd_injection" and f.confidence.value == "confirmed"]
+    assert len(confirmed) == 1
+    assert ("iwr" in confirmed[0].payload) or ("curl.exe" in confirmed[0].payload)
+
+
+@pytest.mark.asyncio
+async def test_engine_confirms_cmd_exe_oob():
+    oob = ShellLikeOOB()
+    sess = _shell_session(oob, recognizes=["| curl ", "& curl "])  # cmd.exe-style shell
+    findings = await scan_session(sess, oob=oob, transport="stdio", check_ids=["cmd_injection"],
+                                  oob_poll_interval=0.001, oob_timeout=0.05)
+    confirmed = [f for f in findings
+                 if f.check == "cmd_injection" and f.confidence.value == "confirmed"]
+    assert len(confirmed) == 1
+    assert ("| curl" in confirmed[0].payload) or ("& curl" in confirmed[0].payload)
