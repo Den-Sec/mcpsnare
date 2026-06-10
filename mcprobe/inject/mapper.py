@@ -103,14 +103,36 @@ def build_baseline(schema: dict) -> dict:
             for name in required if name in props}
 
 
+def _walk(schema, path, root, depth, out, seen_refs):
+    if depth > _MAX_DEPTH:
+        return
+    if isinstance(schema, dict) and "$ref" in schema:
+        ref = schema["$ref"]
+        if ref in seen_refs:
+            return
+        seen_refs = seen_refs | {ref}
+    schema = _branch(_resolve(schema, root), root)
+    t = schema.get("type")
+    if isinstance(t, list):
+        t = next((x for x in t if x != "null"), None)
+    if t == "string":
+        if not schema.get("enum") and "const" not in schema:
+            out.append(path)
+        return
+    if t == "object":
+        for name, sub in schema.get("properties", {}).items():
+            child = f"{path}.{name}" if path else name
+            _walk(sub, child, root, depth + 1, out, seen_refs)
+    elif t == "array":
+        items = schema.get("items")
+        if isinstance(items, dict):
+            _walk(items, f"{path}[0]", root, depth + 1, out, seen_refs)
+
+
 def injection_points(tool: ToolInfo) -> list[InjectionPoint]:
-    props = tool.input_schema.get("properties", {})
-    base = build_baseline(tool.input_schema)
-    points = []
-    for name, spec in props.items():
-        if spec.get("type") == "string":
-            args = dict(base)
-            args.setdefault(name, "mcprobe")
-            points.append(InjectionPoint(tool=tool.name, json_path=name,
-                                         base_args=args, param_name=name))
-    return points
+    root = tool.input_schema or {}
+    paths = []
+    _walk(root, "", root, 0, paths, frozenset())
+    base = build_baseline(root)
+    return [InjectionPoint(tool=tool.name, json_path=p, base_args=base, param_name=p)
+            for p in paths]
