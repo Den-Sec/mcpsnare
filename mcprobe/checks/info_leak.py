@@ -20,6 +20,10 @@ class InfoLeak:
             return None
         baseline = getattr(ctx, "baseline", None)
         if baseline is not None:
+            # Diff by which PATTERN matched, not the matched substring: this favors FP
+            # elimination (a docs tool with a fixed example key is suppressed). Known
+            # trade-off (revisit in M5 honesty pass): a baseline placeholder and a real
+            # leak of the SAME shape both match one pattern, so such a leak is missed.
             base_hits = {m.pattern for m in _MARKERS if m.search(baseline.response or "")}
             triggered = [h for h in hits if h not in base_hits]
             if not triggered:
