@@ -26,8 +26,19 @@ async def _run(args):
     from mcprobe.oob.local import LocalOOB
 
     print("[!] mcprobe - authorized testing only.")
-    oob_cm = LocalOOB() if args.oob == "local" else None
-    oob = oob_cm.__enter__() if oob_cm else None
+    oob_cm = None
+    oob = None
+    if args.oob == "local":
+        oob_cm = LocalOOB()
+        oob = oob_cm.__enter__()
+    elif args.oob == "interactsh":
+        try:
+            from mcprobe.oob.interactsh import InteractshOOB
+            from interactsh_client import InteractshClient  # optional extra
+        except ImportError:
+            raise SystemExit("interactsh selected but 'interactsh-client' is not installed. "
+                             "pip install interactsh-client, or use --oob local.")
+        oob = InteractshOOB(InteractshClient())
     try:
         if args.stdio:
             async with stdio_session(shlex.split(args.stdio)) as sess:
