@@ -10,9 +10,9 @@ class CmdInjection:
     def generate(self, point, ctx):
         probes = []
         if ctx.oob is not None:
-            token, url = ctx.oob.new_token()
-            for tpl in (f"; curl {url}", f"$(curl {url})", f"& curl {url}"):
-                pl = f"mcprobe{tpl}"
+            for tpl in ("; curl {url}", "$(curl {url})", "& curl {url}"):
+                token, url = ctx.oob.new_token()
+                pl = f"mcprobe{tpl.format(url=url)}"
                 probes.append(Probe(check=self.id, point=point, payload=pl,
                                     args=point.set(pl), token=token))
         for tpl in (f"; sleep {_SLEEP_SECONDS}", f"$(sleep {_SLEEP_SECONDS})"):
@@ -22,7 +22,8 @@ class CmdInjection:
         return probes
     def evaluate(self, probe, response, ctx):
         if probe.token and ctx.oob and ctx.oob.interactions(probe.token):
-            return self._finding(probe, Confidence.CONFIRMED, "OOB callback received")
+            return self._finding(probe, Confidence.CONFIRMED,
+                                 f"OOB callback received for payload {probe.payload!r}")
         if probe.meta.get("time_based"):
             elapsed = probe.meta.get("elapsed", 0)
             sleep_s = probe.meta["threshold"]

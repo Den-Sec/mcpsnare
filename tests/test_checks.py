@@ -218,3 +218,32 @@ def test_info_leak_tentative_pattern_only_without_baseline():
     two = "AKIAIOSFODNN7EXAMPLE\n-----BEGIN PRIVATE KEY-----"
     f = il.evaluate(il.generate(point, _ctx())[0], two, _ctx())
     assert f is not None and f.confidence.value == "tentative"
+
+
+class PerPayloadOOB:
+    """Issues a DISTINCT token per new_token() call; only the chosen token 'fires'."""
+    def __init__(self):
+        self._n = 0
+        self.fired = None  # set to the token whose callback should resolve
+    def new_token(self):
+        self._n += 1
+        t = f"tok{self._n}"
+        return t, f"http://oob/{t}"
+    def interactions(self, token):
+        return [{"path": f"/{token}"}] if token == self.fired else []
+
+
+def test_cmdi_per_payload_tokens_identify_separator():
+    c = CmdInjection()
+    oob = PerPayloadOOB()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=oob, transport="stdio")
+    point = InjectionPoint("ping", "host", {"host": "mcprobe"}, "host")
+    oob_probes = [p for p in c.generate(point, ctx) if p.token]
+    assert len({p.token for p in oob_probes}) == 3
+    amp = [p for p in oob_probes if p.payload.startswith("mcprobe& curl")][0]
+    oob.fired = amp.token
+    confirmed = [c.evaluate(p, "", ctx) for p in oob_probes]
+    confirmed = [f for f in confirmed if f]
+    assert len(confirmed) == 1
+    assert confirmed[0].payload == amp.payload
+    assert "& curl" in confirmed[0].evidence
