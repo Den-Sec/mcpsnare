@@ -1,4 +1,5 @@
 import asyncio
+import math
 import time
 from mcprobe.inject.mapper import injection_points, build_baseline
 from mcprobe.checks.base import REGISTRY, CheckContext
@@ -37,7 +38,7 @@ async def _calibrate(session, tool):
 
 
 async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=None,
-                       check_ids=None, oob_wait=2.0, calibrate=True):
+                       check_ids=None, oob_poll_interval=2.5, oob_timeout=20.0, calibrate=True):
     ctx = CheckContext(oob=oob, transport=transport,
                        call_tool_unauth=call_tool_unauth)
     tools = await session.list_tools()
@@ -76,7 +77,15 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
                         collect(check.evaluate(probe, resp, ctx))
 
     if deferred:
-        await asyncio.sleep(oob_wait)
+        # Poll-until-hit: outstanding OOB callbacks may land later than a fixed wait.
+        # Poll every oob_poll_interval up to oob_timeout, exiting early once all
+        # outstanding tokens have resolved. A clean target is bounded by one timeout.
+        tokens = [p.token for _, p, _ in deferred if p.token]
+        polls = max(1, math.ceil(oob_timeout / oob_poll_interval)) if oob_poll_interval > 0 else 1
+        for _ in range(polls):
+            if oob is not None and all(oob.interactions(t) for t in tokens):
+                break
+            await asyncio.sleep(oob_poll_interval)
         for check, probe, resp in deferred:
             collect(check.evaluate(probe, resp, ctx))
     return findings

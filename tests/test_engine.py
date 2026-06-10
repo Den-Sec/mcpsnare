@@ -55,9 +55,40 @@ class DelayedOOB:
 async def test_engine_defers_oob_eval_for_delayed_callback():
     # With deferral + a single oob_wait, the delayed callback is caught.
     findings = await scan_session(FetchSession(), oob=DelayedOOB(),
-                                  transport="http", oob_wait=0)
+                                  transport="http", oob_poll_interval=0.001, oob_timeout=0.1)
     assert any(f.check in ("ssrf", "cmd_injection") and f.confidence.value == "confirmed"
                for f in findings)
+
+
+class CountResolveOOB:
+    """A single-token OOB whose callback only becomes visible from the Nth
+    interactions() call onward - simulating a remote callback that lands late."""
+    def __init__(self, resolve_after):
+        self.resolve_after = resolve_after
+        self._calls = 0
+        self._tok = None
+    def new_token(self):
+        self._tok = "tok"
+        return self._tok, "http://oob/tok"
+    def interactions(self, token):
+        self._calls += 1
+        return [{"path": "/tok"}] if (token == self._tok and self._calls >= self.resolve_after) else []
+
+
+@pytest.mark.asyncio
+async def test_engine_poll_catches_late_oob_callback():
+    oob = CountResolveOOB(resolve_after=5)
+    findings = await scan_session(FetchSession(), oob=oob, transport="http",
+                                  check_ids=["ssrf"], oob_poll_interval=0.001, oob_timeout=1.0)
+    assert any(f.check == "ssrf" and f.confidence.value == "confirmed" for f in findings)
+
+
+@pytest.mark.asyncio
+async def test_engine_poll_bounded_when_no_callback():
+    oob = CountResolveOOB(resolve_after=10_000)
+    findings = await scan_session(FetchSession(), oob=oob, transport="http",
+                                  check_ids=["ssrf"], oob_poll_interval=0.001, oob_timeout=0.005)
+    assert not any(f.check == "ssrf" for f in findings)
 
 
 import sys
