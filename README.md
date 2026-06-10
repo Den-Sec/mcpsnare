@@ -50,7 +50,7 @@ Useful flags:
 - `--header "k:v"` add an HTTP header (repeatable).
 - `--oob {local,interactsh,none}` confirmation backend for OOB callbacks
   (`local` default; `interactsh` requires an injectable interactsh client, see below).
-- `--aggressive` reserved for a future version; has no effect in v1.
+- `--aggressive` also send blocking time-based (sleep) probes; by default mcprobe sends only non-blocking OOB/canary/pattern probes (time-based command-injection detection is aggressive-only).
 - `--output {console,json,sarif,md}` output format (default `console`).
 
 ## Out-of-band (OOB) confirmation
