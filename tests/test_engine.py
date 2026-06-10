@@ -179,7 +179,7 @@ async def test_slow_safe_tool_no_time_based_fp():
     # oracle must report NOTHING. (Slow: ~24s. Run with -m "not slow" to skip.)
     async with stdio_session([sys.executable, _SLOW_SERVER]) as session:
         findings = await scan_session(session, oob=None, transport="stdio",
-                                      check_ids=["cmd_injection"])
+                                      check_ids=["cmd_injection"], aggressive=True)
     assert findings == []
 
 
@@ -226,3 +226,25 @@ async def test_engine_confirms_cmd_oob_and_names_payload():
                  if f.check == "cmd_injection" and f.confidence.value == "confirmed"]
     assert len(confirmed) == 1                 # deduped to one finding per (tool, param)
     assert "curl" in confirmed[0].payload      # the firing OOB separator is named
+
+
+@pytest.mark.asyncio
+async def test_engine_plumbs_aggressive_to_checks():
+    captured = {}
+
+    class SpyAgg:
+        id = "spyagg"
+        def generate(self, point, ctx):
+            captured["aggressive"] = ctx.aggressive
+            return []
+        def evaluate(self, probe, response, ctx):
+            return None
+
+    from mcprobe.checks.base import REGISTRY
+    REGISTRY["spyagg"] = SpyAgg()
+    try:
+        await scan_session(CountingSession(), oob=None, transport="stdio",
+                           check_ids=["spyagg"], aggressive=True)
+    finally:
+        del REGISTRY["spyagg"]
+    assert captured["aggressive"] is True

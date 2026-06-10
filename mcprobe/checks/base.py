@@ -10,6 +10,7 @@ class CheckContext:
     call_tool: Callable[[str, dict], str] | None = None
     call_tool_unauth: Callable[[str, dict], str] | None = None
     baseline: ToolBaseline | None = None
+    aggressive: bool = False
 
 
 class Check(Protocol):

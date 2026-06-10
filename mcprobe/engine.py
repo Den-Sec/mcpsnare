@@ -38,9 +38,10 @@ async def _calibrate(session, tool):
 
 
 async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=None,
-                       check_ids=None, oob_poll_interval=2.5, oob_timeout=20.0, calibrate=True):
+                       check_ids=None, oob_poll_interval=2.5, oob_timeout=20.0, calibrate=True,
+                       aggressive=False):
     ctx = CheckContext(oob=oob, transport=transport,
-                       call_tool_unauth=call_tool_unauth)
+                       call_tool_unauth=call_tool_unauth, aggressive=aggressive)
     tools = await session.list_tools()
     checks = [c for cid, c in REGISTRY.items() if not check_ids or cid in check_ids]
     findings, seen = [], set()

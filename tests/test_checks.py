@@ -69,7 +69,7 @@ class FakeOOB:
 
 def test_cmdi_generates_oob_and_time_probes():
     c = CmdInjection()
-    ctx = CheckContext(call_tool=lambda n, a: "", oob=FakeOOB(), transport="stdio")
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=FakeOOB(), transport="stdio", aggressive=True)
     point = InjectionPoint("ping", "host", {"host": "mcprobe"}, "host")
     probes = c.generate(point, ctx)
     assert any("http://oob/tok123" in p.payload for p in probes)
@@ -86,12 +86,29 @@ def test_cmdi_confirmed_on_oob_hit():
 
 def test_cmdi_firm_on_time_delay():
     c = CmdInjection()
-    ctx = CheckContext(call_tool=lambda n, a: "", oob=None, transport="stdio")
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=None, transport="stdio", aggressive=True)
     point = InjectionPoint("ping", "host", {"host": "mcprobe"}, "host")
     time_probe = [p for p in c.generate(point, ctx) if "sleep" in p.payload][0]
     time_probe.meta["elapsed"] = 6.0
     f = c.evaluate(time_probe, "", ctx)
     assert f is not None and f.confidence.value == "firm"
+
+
+def test_cmdi_default_omits_blocking_sleep_probes():
+    c = CmdInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=None, transport="stdio")  # aggressive=False
+    point = InjectionPoint("run", "host", {"host": "mcprobe"}, "host")
+    probes = c.generate(point, ctx)
+    assert all(not p.meta.get("time_based") for p in probes)
+    assert all("sleep" not in p.payload for p in probes)
+
+
+def test_cmdi_aggressive_enables_sleep_probes():
+    c = CmdInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=None, transport="stdio", aggressive=True)
+    point = InjectionPoint("run", "host", {"host": "mcprobe"}, "host")
+    probes = c.generate(point, ctx)
+    assert any(p.meta.get("time_based") for p in probes)
 
 
 # --- Task 9: ssrf ---
@@ -170,7 +187,7 @@ def test_check_context_baseline_defaults_none_and_accepts_value():
 def _ctx_with_baseline(latency, response=""):
     from mcprobe.checks.base import CheckContext
     from mcprobe.models import ToolBaseline
-    return CheckContext(oob=None, transport="stdio",
+    return CheckContext(oob=None, transport="stdio", aggressive=True,
                         baseline=ToolBaseline(latency=latency, response=response))
 
 

@@ -15,7 +15,8 @@ def build_parser():
     g.add_argument("--http", help="streamable HTTP MCP endpoint URL")
     s.add_argument("--header", action="append", default=[], help="HTTP header k:v (repeatable)")
     s.add_argument("--oob", choices=["local", "interactsh", "none"], default="local")
-    s.add_argument("--aggressive", action="store_true", help="reserved for v1.1 (no effect yet)")
+    s.add_argument("--aggressive", action="store_true",
+                   help="also send blocking time-based (sleep) probes; default sends only non-blocking OOB/canary/pattern probes")
     s.add_argument("--output", choices=["console", "json", "sarif", "md"], default="console")
     return p
 
@@ -45,16 +46,16 @@ async def _run(args):
         if args.stdio:
             argv = shlex.split(args.stdio, posix=(os.name != "nt"))
             async with stdio_session(argv) as sess:
-                findings = await scan_session(sess, oob=oob, transport="stdio")
+                findings = await scan_session(sess, oob=oob, transport="stdio", aggressive=args.aggressive)
         else:
             headers = dict(h.split(":", 1) for h in args.header)
             async with http_session(args.http, headers=headers) as sess:
                 if headers:
                     async with http_session(args.http, headers={}) as sess_unauth:
                         findings = await scan_session(sess, oob=oob, transport="http",
-                                                      call_tool_unauth=sess_unauth.call_tool)
+                                                      call_tool_unauth=sess_unauth.call_tool, aggressive=args.aggressive)
                 else:
-                    findings = await scan_session(sess, oob=oob, transport="http")
+                    findings = await scan_session(sess, oob=oob, transport="http", aggressive=args.aggressive)
     finally:
         if oob_cm:
             oob_cm.__exit__(None, None, None)

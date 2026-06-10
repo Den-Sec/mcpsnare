@@ -15,10 +15,11 @@ class CmdInjection:
                 pl = f"mcprobe{tpl.format(url=url)}"
                 probes.append(Probe(check=self.id, point=point, payload=pl,
                                     args=point.set(pl), token=token))
-        for tpl in (f"; sleep {_SLEEP_SECONDS}", f"$(sleep {_SLEEP_SECONDS})"):
-            pl = f"mcprobe{tpl}"
-            probes.append(Probe(check=self.id, point=point, payload=pl, args=point.set(pl),
-                                meta={"time_based": True, "threshold": _SLEEP_SECONDS}))
+        if getattr(ctx, "aggressive", False):
+            for tpl in (f"; sleep {_SLEEP_SECONDS}", f"$(sleep {_SLEEP_SECONDS})"):
+                pl = f"mcprobe{tpl}"
+                probes.append(Probe(check=self.id, point=point, payload=pl, args=point.set(pl),
+                                    meta={"time_based": True, "threshold": _SLEEP_SECONDS}))
         return probes
     def evaluate(self, probe, response, ctx):
         if probe.token and ctx.oob and ctx.oob.interactions(probe.token):
