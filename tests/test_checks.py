@@ -191,3 +191,30 @@ def test_cmdi_firm_when_delay_exceeds_baseline_margin():
     time_probe.meta["elapsed"] = 5.1
     f = c.evaluate(time_probe, "", ctx)
     assert f is not None and f.confidence.value == "firm"
+
+
+def test_info_leak_suppressed_when_secret_in_baseline():
+    il = InfoLeak()
+    point = InjectionPoint("docs", "q", {"q": "mcprobe"}, "q")
+    secrets = "AKIAIOSFODNN7EXAMPLE\n-----BEGIN PRIVATE KEY-----"
+    ctx = _ctx_with_baseline(0.1, response=secrets)
+    probe = il.generate(point, ctx)[0]
+    assert il.evaluate(probe, secrets, ctx) is None
+
+
+def test_info_leak_firm_on_triggered_diff():
+    il = InfoLeak()
+    point = InjectionPoint("lookup", "q", {"q": "mcprobe"}, "q")
+    ctx = _ctx_with_baseline(0.1, response="nothing secret here")
+    probe = il.generate(point, ctx)[0]
+    leaked = "AKIAIOSFODNN7EXAMPLE\n-----BEGIN PRIVATE KEY-----"
+    f = il.evaluate(probe, leaked, ctx)
+    assert f is not None and f.confidence.value == "firm" and f.cwe == "CWE-200"
+
+
+def test_info_leak_tentative_pattern_only_without_baseline():
+    il = InfoLeak()
+    point = InjectionPoint("lookup", "q", {"q": "mcprobe"}, "q")
+    two = "AKIAIOSFODNN7EXAMPLE\n-----BEGIN PRIVATE KEY-----"
+    f = il.evaluate(il.generate(point, _ctx())[0], two, _ctx())
+    assert f is not None and f.confidence.value == "tentative"

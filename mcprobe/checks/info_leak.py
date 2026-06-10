@@ -16,10 +16,24 @@ class InfoLeak:
                       args=point.set("mcprobe-probe"))]
     def evaluate(self, probe, response, ctx):
         hits = [m.pattern for m in _MARKERS if m.search(response or "")]
+        if not hits:
+            return None
+        baseline = getattr(ctx, "baseline", None)
+        if baseline is not None:
+            base_hits = {m.pattern for m in _MARKERS if m.search(baseline.response or "")}
+            triggered = [h for h in hits if h not in base_hits]
+            if not triggered:
+                return None  # secrets also present in benign baseline = normal output, not a leak
+            return self._finding(probe, Confidence.FIRM,
+                                 f"secret-shaped match triggered by input (absent in baseline): {triggered}")
         if len(hits) >= 2:
-            return Finding(check=self.id, tool=probe.point.tool, param=probe.point.param_name,
-                           severity=Severity.HIGH, confidence=Confidence.FIRM, cwe="CWE-200",
-                           title=f"Secret/info leak via {probe.point.tool}",
-                           payload=probe.payload, evidence=f"matched: {hits}",
-                           remediation="Never return secrets/credentials in tool output or errors.")
+            return self._finding(probe, Confidence.TENTATIVE,
+                                 f"secret-shaped pattern match (no baseline to diff): {hits}")
         return None
+
+    def _finding(self, probe, conf, evidence):
+        return Finding(check=self.id, tool=probe.point.tool, param=probe.point.param_name,
+                       severity=Severity.HIGH, confidence=conf, cwe="CWE-200",
+                       title=f"Secret/info leak via {probe.point.tool}",
+                       payload=probe.payload, evidence=evidence,
+                       remediation="Never return secrets/credentials in tool output or errors.")
