@@ -13,8 +13,7 @@ class PathTraversal:
     def generate(self, point, ctx):
         out = []
         for pl in _PAYLOADS:
-            args = dict(point.base_args); args[point.param_name] = pl
-            out.append(Probe(check=self.id, point=point, payload=pl, args=args))
+            out.append(Probe(check=self.id, point=point, payload=pl, args=point.set(pl)))
         return out
     def evaluate(self, probe, response, ctx):
         if _CANARY.search(response or ""):

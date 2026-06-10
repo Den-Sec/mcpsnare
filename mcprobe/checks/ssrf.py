@@ -8,8 +8,7 @@ class SSRF:
         if ctx.oob is None:
             return []
         token, url = ctx.oob.new_token()
-        args = dict(point.base_args); args[point.param_name] = url
-        return [Probe(check=self.id, point=point, payload=url, args=args, token=token)]
+        return [Probe(check=self.id, point=point, payload=url, args=point.set(url), token=token)]
     def evaluate(self, probe, response, ctx):
         if probe.token and ctx.oob and ctx.oob.interactions(probe.token):
             return Finding(check=self.id, tool=probe.point.tool, param=probe.point.param_name,

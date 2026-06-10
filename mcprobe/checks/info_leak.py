@@ -12,8 +12,8 @@ _MARKERS = [re.compile(p) for p in [
 class InfoLeak:
     id = "info_leak"
     def generate(self, point, ctx):
-        args = dict(point.base_args); args[point.param_name] = "mcprobe-probe"
-        return [Probe(check=self.id, point=point, payload="mcprobe-probe", args=args)]
+        return [Probe(check=self.id, point=point, payload="mcprobe-probe",
+                      args=point.set("mcprobe-probe"))]
     def evaluate(self, probe, response, ctx):
         hits = [m.pattern for m in _MARKERS if m.search(response or "")]
         if len(hits) >= 2:

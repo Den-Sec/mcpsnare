@@ -141,6 +141,16 @@ def test_auth_bypass_none_when_unauth_denied():
     assert a.evaluate(probe, "secret data", ctx) is None
 
 
+def test_path_traversal_deep_sets_nested_path():
+    from mcprobe.checks.path_traversal import PathTraversal
+    from mcprobe.models import InjectionPoint
+    pt = PathTraversal()
+    point = InjectionPoint("read_cfg", "config.path",
+                           {"config": {"path": "mcprobe"}}, "config.path")
+    probe = pt.generate(point, _ctx())[0]
+    assert probe.args == {"config": {"path": probe.payload}}
+
+
 # --- Task 11: all checks registered ---
 def test_all_v1_checks_registered():
     import mcprobe.checks
