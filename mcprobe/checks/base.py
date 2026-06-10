@@ -5,9 +5,9 @@ from mcprobe.models import InjectionPoint, Probe, Finding
 
 @dataclass
 class CheckContext:
-    call_tool: Callable[[str, dict], str]
     oob: object | None
     transport: str
+    call_tool: Callable[[str, dict], str] | None = None
     call_tool_unauth: Callable[[str, dict], str] | None = None
 
 

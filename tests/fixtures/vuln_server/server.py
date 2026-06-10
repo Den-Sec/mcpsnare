@@ -9,12 +9,16 @@ mcp = FastMCP("vuln-server")
 @mcp.tool()
 def ping(host: str) -> str:
     """Ping a host."""
-    return subprocess.run(
-        f"echo pinging {host}",
-        shell=True,
-        capture_output=True,
-        text=True,
-    ).stdout
+    try:
+        return subprocess.run(
+            f"echo pinging {host}",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout
+    except subprocess.TimeoutExpired:
+        return "timeout"
 
 
 @mcp.tool()

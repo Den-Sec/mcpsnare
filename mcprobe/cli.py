@@ -15,7 +15,7 @@ def build_parser():
     g.add_argument("--http", help="streamable HTTP MCP endpoint URL")
     s.add_argument("--header", action="append", default=[], help="HTTP header k:v (repeatable)")
     s.add_argument("--oob", choices=["local", "interactsh", "none"], default="local")
-    s.add_argument("--aggressive", action="store_true")
+    s.add_argument("--aggressive", action="store_true", help="reserved for v1.1 (no effect yet)")
     s.add_argument("--output", choices=["console", "json", "sarif", "md"], default="console")
     return p
 
@@ -35,10 +35,11 @@ async def _run(args):
     elif args.oob == "interactsh":
         try:
             from mcprobe.oob.interactsh import InteractshOOB
-            from interactsh_client import InteractshClient  # optional extra
+            from interactsh_client import InteractshClient  # injectable client
         except ImportError:
-            raise SystemExit("interactsh selected but 'interactsh-client' is not installed. "
-                             "pip install interactsh-client, or use --oob local.")
+            raise SystemExit("interactsh selected but no interactsh client is installed. "
+                             "Install a client exposing register()->domain and poll()->list, "
+                             "or use --oob local.")
         oob = InteractshOOB(InteractshClient())
     try:
         if args.stdio:
@@ -48,7 +49,12 @@ async def _run(args):
         else:
             headers = dict(h.split(":", 1) for h in args.header)
             async with http_session(args.http, headers=headers) as sess:
-                findings = await scan_session(sess, oob=oob, transport="http")
+                if headers:
+                    async with http_session(args.http, headers={}) as sess_unauth:
+                        findings = await scan_session(sess, oob=oob, transport="http",
+                                                      call_tool_unauth=sess_unauth.call_tool)
+                else:
+                    findings = await scan_session(sess, oob=oob, transport="http")
     finally:
         if oob_cm:
             oob_cm.__exit__(None, None, None)

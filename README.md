@@ -49,9 +49,26 @@ Useful flags:
 - `--http <url>` scan a streamable HTTP MCP endpoint.
 - `--header "k:v"` add an HTTP header (repeatable).
 - `--oob {local,interactsh,none}` confirmation backend for OOB callbacks
-  (`local` default; `interactsh` requires the optional `interactsh-client` extra).
-- `--aggressive` enable more intrusive payloads.
+  (`local` default; `interactsh` requires an injectable interactsh client, see below).
+- `--aggressive` reserved for a future version; has no effect in v1.
 - `--output {console,json,sarif,md}` output format (default `console`).
+
+## Out-of-band (OOB) confirmation
+
+OOB callbacks are how mcprobe confirms blind command injection and SSRF: a probe
+makes the target reach back to a listener mcprobe controls.
+
+- `--oob local` (default) spins up an in-process HTTP listener on localhost. It
+  needs no external service and works for targets that can reach your machine
+  (typically local stdio servers).
+- `--oob interactsh` uses an out-of-band interaction server for targets that
+  cannot reach localhost (e.g. remote HTTP servers). mcprobe's `InteractshOOB`
+  is a thin, client-agnostic wrapper: it expects an injectable client object
+  exposing `register() -> domain` and `poll() -> list`. You supply that client;
+  any library implementing those two methods works. If no such client is
+  installed, `--oob interactsh` errors gracefully and tells you to use
+  `--oob local` instead. No specific pip package is bundled or required.
+- `--oob none` disables OOB confirmation; only time-based and canary oracles run.
 
 ## Checks (v1)
 
