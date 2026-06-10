@@ -191,3 +191,38 @@ async def test_docs_secret_tool_no_info_leak_fp():
         findings = await scan_session(session, oob=None, transport="stdio",
                                       check_ids=["info_leak"])
     assert findings == []
+
+
+class MultiDelayedOOB:
+    """Per-payload tokens (R-C2); every issued token resolves asynchronously after the
+    probe round-trip (R-C1) - i.e. NOT visible to an inline pre-poll check, only after
+    the loop yields once."""
+    def __init__(self):
+        self._n = 0
+        self._delivered = set()
+    def new_token(self):
+        self._n += 1
+        t = f"tok{self._n}"
+        asyncio.get_running_loop().call_soon(self._delivered.add, t)
+        return t, f"http://oob/{t}"
+    def interactions(self, token):
+        return [{"path": f"/{token}"}] if token in self._delivered else []
+
+
+class ShellSession:
+    async def list_tools(self):
+        return [ToolInfo("run", "", {"type": "object",
+                "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]})]
+    async def call_tool(self, name, args):
+        return "ran"
+
+
+@pytest.mark.asyncio
+async def test_engine_confirms_cmd_oob_and_names_payload():
+    findings = await scan_session(ShellSession(), oob=MultiDelayedOOB(), transport="stdio",
+                                  check_ids=["cmd_injection"],
+                                  oob_poll_interval=0.001, oob_timeout=0.5)
+    confirmed = [f for f in findings
+                 if f.check == "cmd_injection" and f.confidence.value == "confirmed"]
+    assert len(confirmed) == 1                 # deduped to one finding per (tool, param)
+    assert "curl" in confirmed[0].payload      # the firing OOB separator is named
