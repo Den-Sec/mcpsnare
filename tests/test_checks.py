@@ -256,7 +256,8 @@ def test_cmdi_per_payload_tokens_identify_separator():
     ctx = CheckContext(call_tool=lambda n, a: "", oob=oob, transport="stdio")
     point = InjectionPoint("ping", "host", {"host": "mcprobe"}, "host")
     oob_probes = [p for p in c.generate(point, ctx) if p.token]
-    assert len({p.token for p in oob_probes}) == 3
+    assert len({p.token for p in oob_probes}) == len(oob_probes)
+    assert len(oob_probes) >= 6
     amp = [p for p in oob_probes if p.payload.startswith("mcprobe& curl")][0]
     oob.fired = amp.token
     confirmed = [c.evaluate(p, "", ctx) for p in oob_probes]
@@ -264,3 +265,24 @@ def test_cmdi_per_payload_tokens_identify_separator():
     assert len(confirmed) == 1
     assert confirmed[0].payload == amp.payload
     assert "& curl" in confirmed[0].evidence
+
+
+def test_cmdi_oob_payloads_cover_posix_cmd_powershell():
+    c = CmdInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=PerPayloadOOB(), transport="stdio")
+    point = InjectionPoint("run", "host", {"host": "mcprobe"}, "host")
+    blob = " ".join(p.payload for p in c.generate(point, ctx))
+    assert "$(curl" in blob        # POSIX command substitution
+    assert "| curl" in blob        # cmd.exe / POSIX pipe
+    assert "iwr " in blob          # PowerShell Invoke-WebRequest
+    assert "curl.exe " in blob     # PowerShell real curl
+
+
+def test_cmdi_sleep_payloads_cover_posix_cmd_powershell():
+    c = CmdInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=None, transport="stdio", aggressive=True)
+    point = InjectionPoint("run", "host", {"host": "mcprobe"}, "host")
+    blob = " ".join(p.payload for p in c.generate(point, ctx))
+    assert "sleep 5" in blob              # POSIX
+    assert "Start-Sleep -s 5" in blob     # PowerShell
+    assert "ping -n 6" in blob            # cmd.exe (no sleep builtin)

