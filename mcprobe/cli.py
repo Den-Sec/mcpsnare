@@ -1,0 +1,53 @@
+import argparse
+import asyncio
+import shlex
+
+from mcprobe.report.render import to_json, to_sarif, to_markdown
+
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="mcprobe")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("scan", help="scan an MCP server")
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--stdio", help='command to launch the server, e.g. "python server.py"')
+    g.add_argument("--http", help="streamable HTTP MCP endpoint URL")
+    s.add_argument("--header", action="append", default=[], help="HTTP header k:v (repeatable)")
+    s.add_argument("--oob", choices=["local", "interactsh", "none"], default="local")
+    s.add_argument("--aggressive", action="store_true")
+    s.add_argument("--output", choices=["console", "json", "sarif", "md"], default="console")
+    return p
+
+
+async def _run(args):
+    from mcprobe.connect.session import stdio_session, http_session
+    from mcprobe.engine import scan_session
+    import mcprobe.checks  # register
+    from mcprobe.oob.local import LocalOOB
+
+    print("[!] mcprobe - authorized testing only.")
+    oob_cm = LocalOOB() if args.oob == "local" else None
+    oob = oob_cm.__enter__() if oob_cm else None
+    try:
+        if args.stdio:
+            async with stdio_session(shlex.split(args.stdio)) as sess:
+                findings = await scan_session(sess, oob=oob, transport="stdio")
+        else:
+            headers = dict(h.split(":", 1) for h in args.header)
+            async with http_session(args.http, headers=headers) as sess:
+                findings = await scan_session(sess, oob=oob, transport="http")
+    finally:
+        if oob_cm:
+            oob_cm.__exit__(None, None, None)
+    renderers = {"json": to_json, "sarif": to_sarif, "md": to_markdown}
+    if args.output in renderers:
+        print(renderers[args.output](findings))
+    else:
+        print(f"\n{len(findings)} confirmed finding(s):")
+        for f in findings:
+            print(f"  [{f.severity.value.upper()}] {f.title}  ({f.confidence.value})")
+
+
+def main():
+    args = build_parser().parse_args()
+    asyncio.run(_run(args))
