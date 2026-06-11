@@ -3,6 +3,7 @@
 **The active security scanner for MCP servers — _Burp Active Scan, for the Model Context Protocol._**
 
 [![ci](https://github.com/Den-Sec/mcpsnare/actions/workflows/ci.yml/badge.svg)](https://github.com/Den-Sec/mcpsnare/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/mcpsnare.svg)](https://pypi.org/project/mcpsnare/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -57,15 +58,20 @@ $ mcpsnare scan --stdio "python vulnerable_server.py" --output json
 
 ## Install
 
-From source (Python 3.11+):
+```bash
+pipx install mcpsnare        # isolated CLI (recommended)
+# or
+pip install mcpsnare
+```
+
+From source (development):
 
 ```bash
 git clone https://github.com/Den-Sec/mcpsnare && cd mcpsnare
 pip install -e ".[dev]"
 ```
 
-This installs the `mcpsnare` console entry point. A PyPI release (`pipx install mcpsnare`)
-is imminent — see [Releases](https://github.com/Den-Sec/mcpsnare/releases).
+Both install the `mcpsnare` console entry point. Requires Python 3.11+.
 
 ## Quickstart
 
