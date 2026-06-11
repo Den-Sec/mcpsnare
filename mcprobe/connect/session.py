@@ -27,7 +27,11 @@ class Session:
         parts = []
         for c in resp.content:
             parts.append(getattr(c, "text", "") or "")
-        return "\n".join(parts)
+        structured = getattr(resp, "structuredContent", None)
+        if structured:
+            import json
+            parts.append(json.dumps(structured, default=str))
+        return "\n".join(p for p in parts if p)
 
 
 @asynccontextmanager
