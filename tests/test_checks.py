@@ -319,3 +319,12 @@ def test_cmdi_sleep_payloads_cover_posix_cmd_powershell():
     assert "sleep 5" in blob              # POSIX
     assert "Start-Sleep -s 5" in blob     # PowerShell
     assert "ping -n 6" in blob            # cmd.exe (no sleep builtin)
+
+
+def test_cmdi_emits_embed_variant_for_formatted_param():
+    c = CmdInjection()
+    oob = PerPayloadOOB()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=oob, transport="stdio")
+    point = InjectionPoint("send", "to", {"to": "probe@mcprobe.example"}, "to")
+    payloads = [p.payload for p in c.generate(point, ctx)]
+    assert any(p.startswith("probe@mcprobe.example") and "curl" in p for p in payloads)

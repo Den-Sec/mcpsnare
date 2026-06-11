@@ -47,6 +47,22 @@ class InjectionPoint:
         deep_set(args, self.json_path, value)
         return args
 
+    def embed(self, payload, position="suffix") -> dict:
+        """Return base_args with ``payload`` embedded onto the baseline-VALID value at
+        json_path (suffix by default), rather than replacing it. Reaches vulns behind
+        format/content validation. Falls back to the payload alone if the leaf is absent."""
+        import copy
+        from mcprobe.inject.jsonpath import deep_get, deep_set
+        args = copy.deepcopy(self.base_args)
+        try:
+            valid = deep_get(args, self.json_path)
+        except (KeyError, IndexError, TypeError):
+            valid = ""
+        valid = valid if isinstance(valid, str) else ""
+        combined = f"{valid}{payload}" if position == "suffix" else f"{payload}{valid}"
+        deep_set(args, self.json_path, combined)
+        return args
+
 
 @dataclass
 class Probe:

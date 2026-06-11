@@ -31,9 +31,17 @@ class CmdInjection:
         if ctx.oob is not None:
             for tpl in _OOB_TEMPLATES:
                 token, url = ctx.oob.new_token()
-                pl = f"mcprobe{tpl.format(url=url)}"
-                probes.append(Probe(check=self.id, point=point, payload=pl,
-                                    args=point.set(pl), token=token))
+                cmd = tpl.format(url=url)                  # separator+command, e.g. "; curl <url>"
+                whole_args = point.set(f"mcprobe{cmd}")
+                embed_args = point.embed(cmd)             # valid-value prefix + cmd
+                variants = [whole_args]
+                if embed_args != whole_args:
+                    variants.append(embed_args)
+                for args in variants:
+                    from mcprobe.inject.jsonpath import deep_get
+                    payload = deep_get(args, point.json_path)
+                    probes.append(Probe(check=self.id, point=point, payload=str(payload),
+                                        args=args, token=token))
         if getattr(ctx, "aggressive", False):
             for tpl in _SLEEP_TEMPLATES:
                 pl = f"mcprobe{tpl.format(n=_SLEEP_SECONDS, n1=_SLEEP_SECONDS + 1)}"
