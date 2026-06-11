@@ -33,6 +33,17 @@ class Session:
             parts.append(json.dumps(structured, default=str))
         return "\n".join(p for p in parts if p)
 
+    async def list_resource_templates(self):
+        resp = await self._cs.list_resource_templates()
+        return [(t.name, t.uriTemplate) for t in resp.resourceTemplates]
+
+    async def read_resource(self, uri):
+        resp = await self._cs.read_resource(uri)
+        parts = []
+        for c in resp.contents:
+            parts.append(getattr(c, "text", "") or "")
+        return "\n".join(p for p in parts if p)
+
 
 @asynccontextmanager
 async def stdio_session(command):
