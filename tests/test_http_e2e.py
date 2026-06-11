@@ -46,3 +46,18 @@ async def test_scan_confirms_path_traversal_over_http(live_url):
     assert ("path_traversal", "config.path") in confirmed   # nested object param
     assert ("path_traversal", "paths[0]") in confirmed       # array item param
     assert ("path_traversal", "path") in confirmed           # enum-gated tool (read_mode)
+
+
+@pytest.mark.asyncio
+async def test_scan_confirms_auth_bypass_over_http_dual_session(live_url):
+    # Two REAL http_sessions to the same live server: one "authed" (sends a header),
+    # one unauth (no header). The fixture enforces nothing, so the unauthenticated
+    # differential fires - exercising the async call_tool_unauth path over a real
+    # socket (a sync unauth call would crash on real HTTP; that was the M6 bug).
+    async with http_session(live_url, headers={"Authorization": "Bearer x"}) as authed, \
+               http_session(live_url, headers={}) as unauth:
+        findings = await scan_session(authed, oob=None, transport="http",
+                                      call_tool_unauth=unauth.call_tool,
+                                      check_ids=["auth_bypass"], calibrate=False)
+    assert any(f.check == "auth_bypass" and f.confidence.value == "confirmed"
+               for f in findings)
