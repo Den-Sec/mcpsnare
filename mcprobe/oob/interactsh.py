@@ -17,14 +17,18 @@ class InteractshOOB:
         return token, f"http://{token}.{self._domain}"
 
     def interactions(self, token: str) -> list[dict]:
+        # Case-insensitive: interactsh randomises the case of the recorded host
+        # (DNS 0x20 encoding), so a lowercase token must still match.
         self._cache.extend(self._client.poll() or [])
-        return [i for i in self._cache if token in str(i)]
+        tl = token.lower()
+        return [i for i in self._cache if tl in str(i).lower()]
 
     def poll_all(self) -> dict[str, list[dict]]:
         self._cache.extend(self._client.poll() or [])
         out: dict[str, list[dict]] = {}
         for tok in self._tokens:
-            hits = [i for i in self._cache if tok in str(i)]
+            tl = tok.lower()
+            hits = [i for i in self._cache if tl in str(i).lower()]
             if hits:
                 out[tok] = hits
         return out

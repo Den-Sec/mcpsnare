@@ -73,7 +73,9 @@ class InteractshClient:
         for item in data:
             raw = base64.b64decode(item)
             iv, ct = raw[:16], raw[16:]
-            dec = Cipher(algorithms.AES(aes_key), modes.CFB(iv)).decryptor()
+            # interactsh encrypts interactions with AES-256-CTR (IV = the 16-byte
+            # counter block), NOT CFB - verified against a live oast.fun round-trip.
+            dec = Cipher(algorithms.AES(aes_key), modes.CTR(iv)).decryptor()
             plain = dec.update(ct) + dec.finalize()
             try:
                 out.append(json.loads(plain.decode("utf-8", "ignore")))

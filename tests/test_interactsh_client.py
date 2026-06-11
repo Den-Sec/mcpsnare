@@ -37,7 +37,8 @@ def test_interactsh_client_decrypts_poll(monkeypatch):
     aes_key = os.urandom(32)
     iv = os.urandom(16)
     interaction = {"protocol": "http", "full-id": "tok123abc", "raw-request": "GET /tok123abc"}
-    enc = Cipher(algorithms.AES(aes_key), modes.CFB(iv)).encryptor()
+    # interactsh uses AES-256-CTR (verified against live oast.fun), not CFB.
+    enc = Cipher(algorithms.AES(aes_key), modes.CTR(iv)).encryptor()
     ct = enc.update(json.dumps(interaction).encode()) + enc.finalize()
     data_item = base64.b64encode(iv + ct).decode()
     enc_key = c._key.public_key().encrypt(
