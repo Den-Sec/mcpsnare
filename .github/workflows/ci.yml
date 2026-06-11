@@ -2,10 +2,24 @@ name: ci
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
-      - run: pytest -v
+      # Run the fast suite on every cell; the full suite (incl. the ~slow timing test)
+      # runs on the ubuntu/3.11 cell to keep the matrix quick. Cross-OS payload paths
+      # (cmd.exe/PowerShell, win.ini vs /etc/passwd canaries) are exercised by running
+      # on both Windows and Linux.
+      - if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        run: pytest -v
+      - if: '!(matrix.os == ''ubuntu-latest'' && matrix.python == ''3.11'')'
+        run: pytest -v -m "not slow"
