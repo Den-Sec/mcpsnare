@@ -119,6 +119,10 @@ traversal, info-leak, nested/array/enum injection points, and the OOB,
 baseline-calibration, and false-positive-suppression paths end to end. See
 [docs/claims-matrix.md](docs/claims-matrix.md) for the claim-to-test mapping.
 
+It has also been smoke-tested against the real `@modelcontextprotocol/server-everything`
+reference server (13 tools, 2 resource templates) - clean run, zero false positives. See
+[docs/smoke-run.md](docs/smoke-run.md).
+
 ## Roadmap
 
 - MCP-specific checks: tool-poisoning / prompt-injection via tool descriptions,
