@@ -67,12 +67,11 @@ makes the target reach back to a listener mcprobe controls.
   needs no external service and works for targets that can reach your machine
   (typically local stdio servers).
 - `--oob interactsh` uses an out-of-band interaction server for targets that
-  cannot reach localhost (e.g. remote HTTP servers). mcprobe's `InteractshOOB`
-  is a thin, client-agnostic wrapper: it expects an injectable client object
-  exposing `register() -> domain` and `poll() -> list`. You supply that client;
-  any library implementing those two methods works. If no such client is
-  installed, `--oob interactsh` errors gracefully and tells you to use
-  `--oob local` instead. No specific pip package is bundled or required. See [docs/interactsh-runbook.md](docs/interactsh-runbook.md) for a real end-to-end runbook.
+  cannot reach localhost (e.g. remote HTTP servers). mcprobe ships a real interactsh
+  client (RSA-OAEP / AES-256-CTR), so this works out of the box against the public
+  `oast.fun` (override with `--interactsh-server`); it was live-verified end to end.
+  `InteractshOOB` also accepts any injectable client exposing `register() -> domain`
+  and `poll() -> list`. See [docs/interactsh-runbook.md](docs/interactsh-runbook.md).
 - `--oob none` disables OOB confirmation; only time-based and canary oracles run.
 
 ## Confidence levels

@@ -61,9 +61,13 @@ mapping. Run the suite with `python -m pytest -q` (110 tests as of v1.1).
 - **Windows payloads are validated for generation and OOB-confirmation wiring, not
   executed against a real cmd.exe / PowerShell host in CI.** Real-shell validation is
   a follow-up.
-- **Real interactsh OOB is documented, not CI-tested.** The automated suite uses
-  fake OOB providers; a real remote-callback run is the job of
-  [interactsh-runbook.md](interactsh-runbook.md), not CI.
+- **Real interactsh OOB: client crypto is CI-tested; the live round-trip is manual.**
+  mcprobe ships a real interactsh client (RSA-OAEP / AES-256-CTR) whose crypto is
+  unit-tested in CI (`test_interactsh_client.py`), and the full path was manually
+  verified live against `oast.fun` (a real DNS callback registered/polled/decrypted/
+  matched end to end) - see [interactsh-runbook.md](interactsh-runbook.md). The live
+  round-trip itself is not in CI (network / non-determinism); engine-level OOB tests use
+  deterministic fakes.
 - **Time-based probes run serially under concurrency.** To keep their latency
   measurement uncontended, `--aggressive` time-based probes are not parallelised, so
   an aggressive scan pays the full per-probe sleep latency sequentially.
