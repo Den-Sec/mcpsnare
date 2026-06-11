@@ -24,14 +24,27 @@ def ping(host: str) -> str:
         return "timeout"
 
 
-@mcp.tool()
-def read_doc(path: str) -> str:
-    """Read a document."""
+def _read(path: str) -> str:
+    """Deliberately vulnerable file read (no path containment). The path-traversal
+    payloads target /etc/passwd or windows/win.ini; return the canary content
+    deterministically so the test is independent of the runner's CWD drive/OS (a real
+    open() of a system file depends on which drive the repo is checked out on)."""
+    low = path.replace("\\", "/").lower()
+    if "etc/passwd" in low:
+        return "root:x:0:0:root:/root:/bin/bash"
+    if "win.ini" in low:
+        return "[fonts]\n[extensions]"
     try:
         with open(path, "r", errors="ignore") as f:
             return f.read()
     except OSError as e:
         return f"error: {e}"
+
+
+@mcp.tool()
+def read_doc(path: str) -> str:
+    """Read a document."""
+    return _read(path)
 
 
 @mcp.tool()
@@ -40,14 +53,6 @@ def whoami(user: str) -> str:
     if user == "mcprobe-probe":
         return "AKIAIOSFODNN7EXAMPLE\n-----BEGIN PRIVATE KEY-----\nMIIB"
     return f"user {user}"
-
-
-def _read(path: str) -> str:
-    try:
-        with open(path, "r", errors="ignore") as f:
-            return f.read()
-    except OSError as e:
-        return f"error: {e}"
 
 
 class Cfg(BaseModel):
