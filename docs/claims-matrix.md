@@ -2,7 +2,7 @@
 
 mcprobe's honesty contract (PRD v1.1, R-F1): every public claim in the README is
 backed by a passing automated test, or it is softened/removed. This file is the
-mapping. Run the suite with `python -m pytest -q` (101 tests as of v1.1).
+mapping. Run the suite with `python -m pytest -q` (102 tests as of v1.1).
 
 ## Confidence taxonomy → backing tests
 
@@ -26,7 +26,7 @@ mapping. Run the suite with `python -m pytest -q` (101 tests as of v1.1).
 | OOB callback confirms blind command injection | `test_cmdi_confirmed_on_oob_hit`, `test_engine_confirms_cmd_oob_and_names_payload` |
 | OOB confirms SSRF | `test_ssrf_injects_oob_url_and_confirms` |
 | Canary confirms path traversal | `test_traversal_confirmed_on_passwd_canary` |
-| Missing authentication via unauthenticated differential (tolerant to volatile fields, not record-id) | `test_auth_bypass_confirmed_when_unauth_succeeds`, `test_auth_bypass_firm_when_only_timestamp_differs`, `test_auth_bypass_none_when_only_record_id_differs`, `test_auth_bypass_none_when_unauth_denied` |
+| Missing authentication via unauthenticated differential (tolerant to volatile fields, not record-id; works over async transport) | `test_auth_bypass_confirmed_when_unauth_succeeds`, `test_auth_bypass_firm_when_only_timestamp_differs`, `test_auth_bypass_none_when_only_record_id_differs`, `test_auth_bypass_none_when_unauth_denied`, `test_engine_auth_bypass_fires_over_async_unauth` |
 | Payload embedded in a format-valid value reaches handlers behind validation (R-A4) | `test_injection_point_embed_prefixes_valid_value`, `test_cmdi_emits_embed_variant_for_formatted_param` |
 | Structured tool output (`structuredContent`) surfaced to oracles (R-A5) | `test_call_tool_flattens_structured_content` |
 | One-round-trip OOB polling (`poll_all`) (R-C3) | `test_local_oob_poll_all_returns_all_interactions` |
@@ -72,6 +72,7 @@ mapping. Run the suite with `python -m pytest -q` (101 tests as of v1.1).
 - **Info-leak baseline diff is by matched-pattern identity, not matched substring.**
   A real leak of the same shape as a benign baseline placeholder can be missed.
 - **HTTP transport is implemented and wired** (session factory, repeatable headers,
-  and the auth/unauth differential for `auth_bypass`) **but the automated suite
-  exercises only the session factory, not a live HTTP list+call round-trip.** stdio
-  is the end-to-end-tested transport; a live-HTTP e2e is a follow-up.
+  and the auth/unauth differential for `auth_bypass` - whose async unauth path is now
+  covered by `test_engine_auth_bypass_fires_over_async_unauth`) **but the automated
+  suite does not yet spin a live HTTP MCP server for a full list+call round-trip.**
+  stdio is the end-to-end-tested transport; a live-HTTP-server e2e is a follow-up.
