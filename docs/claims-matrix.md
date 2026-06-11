@@ -44,7 +44,7 @@ mapping. Run the suite with `python -m pytest -q` (110 tests as of v1.1).
 | Works over stdio (exercised end-to-end) | `test_stdio_session_lists_and_calls_tools` |
 | Streamable HTTP transport wired (session factory; CLI headers + auth/unauth differential) - see HTTP caveat below | `test_http_session_factory_exists`, `test_cli_parses_http_scan` |
 | Reports in console / JSON / SARIF / Markdown | `test_json_report_structure`, `test_sarif_is_valid_json_with_rules`, `test_markdown_contains_title_and_severity` |
-| All five v1 checks registered | `test_all_v1_checks_registered` |
+| All six checks registered (cmd_injection, ssrf, path_traversal, auth_bypass, info_leak, sql_injection) | `test_all_v1_checks_registered` |
 | Resource templates scanned: a templated URI param is a traversal injection point (R-A6) | `test_resource_tool_view_exposes_templates_as_tools`, `test_engine_confirms_traversal_in_resource_template` |
 | SQL injection: error-based (FIRM on baseline-diff / TENTATIVE pattern-only) + calibrated time-based (CWE-89) | `test_sqli_firm_on_error_signature_diff`, `test_sqli_suppressed_when_error_in_baseline`, `test_sqli_tentative_error_without_baseline`, `test_sqli_time_based_firm_on_calibrated_delay` |
 

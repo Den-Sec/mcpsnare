@@ -21,7 +21,7 @@ def aggressive_note(aggressive: bool) -> str | None:
     if aggressive:
         return None
     return ("[i] Default mode: blocking time-based probes were skipped. "
-            "Re-run with --aggressive to add time-based command-injection detection.")
+            "Re-run with --aggressive to add time-based command-injection and SQL-injection detection.")
 
 
 def build_parser():

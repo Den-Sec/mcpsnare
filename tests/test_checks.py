@@ -209,7 +209,8 @@ def test_path_traversal_deep_sets_nested_path():
 def test_all_v1_checks_registered():
     import mcprobe.checks
     from mcprobe.checks.base import REGISTRY
-    assert {"path_traversal", "info_leak", "cmd_injection", "ssrf", "auth_bypass"} <= set(REGISTRY)
+    assert {"path_traversal", "info_leak", "cmd_injection", "ssrf", "auth_bypass",
+            "sql_injection"} <= set(REGISTRY)
 
 
 def test_check_context_baseline_defaults_none_and_accepts_value():
