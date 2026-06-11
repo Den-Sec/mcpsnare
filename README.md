@@ -89,7 +89,7 @@ The OOB and canary checks emit only **CONFIRMED**. Auth-bypass emits **CONFIRMED
 on a byte-identical response or **FIRM** on a match after stripping volatile fields.
 The timing and info-leak oracles are where **FIRM** and **TENTATIVE** arise.
 
-## Checks (v1)
+## Checks
 
 | Check            | Vulnerability                  | CWE      |
 | ---------------- | ------------------------------ | -------- |
@@ -99,6 +99,9 @@ The timing and info-leak oracles are where **FIRM** and **TENTATIVE** arise.
 | `auth_bypass`    | Missing authentication         | CWE-306  |
 | `info_leak`      | Secret / sensitive info leak   | CWE-200  |
 | `sql_injection`  | SQL injection                  | CWE-89   |
+
+mcprobe also enumerates MCP **resource templates** and treats their templated URI
+params (e.g. `file:///{path}`) as injection points for path-traversal and info-leak.
 
 ## Authorized testing only
 
@@ -118,7 +121,6 @@ baseline-calibration, and false-positive-suppression paths end to end. See
 
 ## Roadmap
 
-- SQL injection check.
 - MCP-specific checks: tool-poisoning / prompt-injection via tool descriptions,
   and tool-scope / permission-boundary violations.
 - Additional OOB providers and richer time-based oracles.

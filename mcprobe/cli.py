@@ -49,6 +49,7 @@ def build_parser():
 
 async def _run(args):
     from mcprobe.connect.session import stdio_session, http_session
+    from mcprobe.connect.resources import ResourceToolView
     from mcprobe.engine import scan_session
     import mcprobe.checks  # register
     from mcprobe.oob.local import LocalOOB
@@ -76,6 +77,9 @@ async def _run(args):
                                               concurrency=args.concurrency, rate=args.rate,
                                               oob_timeout=args.oob_timeout,
                                               oob_poll_interval=args.oob_poll_interval)
+                findings += await scan_session(ResourceToolView(sess), oob=oob, transport="stdio",
+                                               aggressive=args.aggressive, concurrency=args.concurrency,
+                                               rate=args.rate, check_ids=["path_traversal", "info_leak"])
         else:
             headers = dict(h.split(":", 1) for h in args.header)
             async with http_session(args.http, headers=headers) as sess:
@@ -86,11 +90,17 @@ async def _run(args):
                                                       concurrency=args.concurrency, rate=args.rate,
                                                       oob_timeout=args.oob_timeout,
                                                       oob_poll_interval=args.oob_poll_interval)
+                        findings += await scan_session(ResourceToolView(sess), oob=oob, transport="http",
+                                                       aggressive=args.aggressive, concurrency=args.concurrency,
+                                                       rate=args.rate, check_ids=["path_traversal", "info_leak"])
                 else:
                     findings = await scan_session(sess, oob=oob, transport="http", aggressive=args.aggressive,
                                                   concurrency=args.concurrency, rate=args.rate,
                                                   oob_timeout=args.oob_timeout,
                                                   oob_poll_interval=args.oob_poll_interval)
+                    findings += await scan_session(ResourceToolView(sess), oob=oob, transport="http",
+                                                   aggressive=args.aggressive, concurrency=args.concurrency,
+                                                   rate=args.rate, check_ids=["path_traversal", "info_leak"])
     finally:
         if oob_cm:
             oob_cm.__exit__(None, None, None)

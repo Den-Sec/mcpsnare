@@ -383,3 +383,26 @@ async def test_engine_auth_bypass_fires_over_async_unauth():
                                   call_tool_unauth=unauth, check_ids=["auth_bypass"],
                                   calibrate=False)
     assert any(f.check == "auth_bypass" and f.confidence.value == "confirmed" for f in findings)
+
+
+from mcprobe.connect.resources import ResourceToolView
+
+
+class FakeResourceSession:
+    """A vulnerable resource template file:///{path} that 'reads' the path - returns a
+    traversal canary when the path escapes, like a real path-traversal-vulnerable read."""
+    async def list_resource_templates(self):
+        return [("read_file", "file:///{path}")]
+    async def read_resource(self, uri):
+        return "root:x:0:0:root:/root:/bin/bash" if "etc/passwd" in uri else "not found"
+
+
+@pytest.mark.asyncio
+async def test_engine_confirms_traversal_in_resource_template():
+    view = ResourceToolView(FakeResourceSession())
+    findings = await scan_session(view, oob=None, transport="stdio",
+                                  check_ids=["path_traversal"])
+    confirmed = [f for f in findings
+                 if f.check == "path_traversal" and f.confidence.value == "confirmed"]
+    assert len(confirmed) == 1
+    assert confirmed[0].param == "path"   # the templated URI param is the injection point
