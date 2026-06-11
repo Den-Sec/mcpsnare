@@ -68,9 +68,11 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
         return resp
 
     def _dispatch(tool_ctx, check, probe, resp):
-        # await-free -> atomic under asyncio's single thread
+        # await-free -> atomic under asyncio's single thread. Carry tool_ctx into the
+        # deferred tuple too, so all three dispatch paths evaluate under the probe's
+        # own per-tool context (no hidden "deferred must not read baseline" invariant).
         if probe.token and oob is not None:
-            deferred.append((check, probe, resp))
+            deferred.append((check, probe, resp, tool_ctx))
         else:
             collect(check.evaluate(probe, resp, tool_ctx))
 
@@ -106,7 +108,7 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
         # Poll-until-hit: outstanding OOB callbacks may land later than a fixed wait.
         # Poll every oob_poll_interval up to oob_timeout, exiting early once all
         # outstanding tokens have resolved. A clean target is bounded by one timeout.
-        tokens = [p.token for _, p, _ in deferred if p.token]
+        tokens = [p.token for _, p, _, _ in deferred if p.token]
         polls = max(1, math.ceil(oob_timeout / oob_poll_interval)) if oob_poll_interval > 0 else 1
         for _ in range(polls):
             # One round-trip per iteration via poll_all(). Early-exit only when ALL
@@ -118,6 +120,6 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
                 if all(hits.get(t) for t in tokens):
                     break
             await asyncio.sleep(oob_poll_interval)
-        for check, probe, resp in deferred:
-            collect(check.evaluate(probe, resp, ctx))
+        for check, probe, resp, tool_ctx in deferred:
+            collect(check.evaluate(probe, resp, tool_ctx))
     return findings
