@@ -53,6 +53,9 @@ Useful flags:
 - `--oob {local,interactsh,none}` confirmation backend for OOB callbacks
   (`local` default; `interactsh` requires an injectable interactsh client, see below).
 - `--aggressive` also send blocking time-based (sleep) probes; by default mcprobe sends only non-blocking OOB/canary/pattern probes (time-based command-injection detection is aggressive-only).
+- `--concurrency N` max concurrent probe requests (default 4). Time-based probes always run serially (uncontended latency).
+- `--rate R` cap the request rate to R requests/second (default unlimited). Honored across concurrency and calibration.
+- `--oob-timeout S` / `--oob-poll-interval S` tune how long (default 20s) and how often (default 2.5s) mcprobe polls for OOB callbacks.
 - `--output {console,json,sarif,md}` output format (default `console`).
 
 ## Out-of-band (OOB) confirmation
@@ -78,12 +81,13 @@ Every finding carries one of three confidence levels, each earned by a specific 
 
 | Level | Meaning | How it's earned |
 | ---------- | --------------------------------------------------- | --------------- |
-| **CONFIRMED** | The payload provably executed, or protected data was reached. | An out-of-band callback fired (cmd injection, SSRF), a canary value was read back (path traversal), or an unauthenticated call returned the protected data (auth bypass). |
-| **FIRM** | A calibrated signal strongly indicates the issue, short of an OOB proof. | A response delay exceeds the per-tool calibrated baseline by the injected sleep (time-based cmd injection), or a secret-shaped string appears in the probe response but not in the benign baseline (info leak). |
+| **CONFIRMED** | The payload provably executed, or protected data was reached. | An out-of-band callback fired (cmd injection, SSRF), a canary value was read back (path traversal), or an unauthenticated call returned a response byte-identical to the authenticated one (auth bypass). |
+| **FIRM** | A calibrated/inferred signal strongly indicates the issue, short of an OOB proof. | A response delay exceeds the per-tool calibrated baseline by the injected sleep (time-based cmd injection); a secret-shaped string appears in the probe response but not in the benign baseline (info leak); or an unauthenticated response matches the authenticated one only after stripping volatile fields like timestamps/ids (auth bypass). |
 | **TENTATIVE** | Pattern-only match, with no calibration to corroborate it. | A secret-shaped string matched, but no baseline was available to prove the input triggered it - review manually. |
 
-The OOB, canary, and auth-differential checks emit only **CONFIRMED**; the
-timing and info-leak oracles are where **FIRM** and **TENTATIVE** arise.
+The OOB and canary checks emit only **CONFIRMED**. Auth-bypass emits **CONFIRMED**
+on a byte-identical response or **FIRM** on a match after stripping volatile fields.
+The timing and info-leak oracles are where **FIRM** and **TENTATIVE** arise.
 
 ## Checks (v1)
 

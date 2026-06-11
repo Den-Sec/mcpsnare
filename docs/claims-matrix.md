@@ -2,7 +2,7 @@
 
 mcprobe's honesty contract (PRD v1.1, R-F1): every public claim in the README is
 backed by a passing automated test, or it is softened/removed. This file is the
-mapping. Run the suite with `python -m pytest -q` (88 tests as of v1.1).
+mapping. Run the suite with `python -m pytest -q` (101 tests as of v1.1).
 
 ## Confidence taxonomy → backing tests
 
@@ -11,9 +11,10 @@ mapping. Run the suite with `python -m pytest -q` (88 tests as of v1.1).
 | **CONFIRMED** (cmd injection, OOB) | Out-of-band callback received | `test_cmdi_confirmed_on_oob_hit`, `test_engine_confirms_cmd_oob_and_names_payload` |
 | **CONFIRMED** (SSRF, OOB) | Out-of-band callback received | `test_ssrf_injects_oob_url_and_confirms` |
 | **CONFIRMED** (path traversal, canary) | Canary value read back from the response | `test_traversal_confirmed_on_passwd_canary`, `test_scan_confirms_nested_array_enum_traversal` |
-| **CONFIRMED** (auth bypass, differential) | Unauthenticated call returns the protected data | `test_auth_bypass_confirmed_when_unauth_succeeds` |
+| **CONFIRMED** (auth bypass, byte-identical) | Unauthenticated response is byte-identical to the authenticated one | `test_auth_bypass_confirmed_when_unauth_succeeds` |
 | **FIRM** (cmd injection, calibrated timing) | Delay exceeds the per-tool calibrated baseline | `test_cmdi_firm_when_delay_exceeds_baseline_margin` |
 | **FIRM** (info leak, baseline diff) | Secret-shaped string present in the probe response but absent from the benign baseline | `test_info_leak_firm_on_triggered_diff` |
+| **FIRM** (auth bypass, volatile-tolerant) | Responses match only after stripping timestamps/ids/nonces (inferred, not raw) | `test_auth_bypass_firm_when_only_timestamp_differs` |
 | **TENTATIVE** (info leak, pattern-only) | Secret-shaped match with no baseline to corroborate | `test_info_leak_tentative_pattern_only_without_baseline` |
 
 ## README claims → backing tests
@@ -25,7 +26,13 @@ mapping. Run the suite with `python -m pytest -q` (88 tests as of v1.1).
 | OOB callback confirms blind command injection | `test_cmdi_confirmed_on_oob_hit`, `test_engine_confirms_cmd_oob_and_names_payload` |
 | OOB confirms SSRF | `test_ssrf_injects_oob_url_and_confirms` |
 | Canary confirms path traversal | `test_traversal_confirmed_on_passwd_canary` |
-| Missing authentication via unauthenticated differential | `test_auth_bypass_confirmed_when_unauth_succeeds`, `test_auth_bypass_none_when_unauth_denied` |
+| Missing authentication via unauthenticated differential (tolerant to volatile fields, not record-id) | `test_auth_bypass_confirmed_when_unauth_succeeds`, `test_auth_bypass_firm_when_only_timestamp_differs`, `test_auth_bypass_none_when_only_record_id_differs`, `test_auth_bypass_none_when_unauth_denied` |
+| Payload embedded in a format-valid value reaches handlers behind validation (R-A4) | `test_injection_point_embed_prefixes_valid_value`, `test_cmdi_emits_embed_variant_for_formatted_param` |
+| Structured tool output (`structuredContent`) surfaced to oracles (R-A5) | `test_call_tool_flattens_structured_content` |
+| One-round-trip OOB polling (`poll_all`) (R-C3) | `test_local_oob_poll_all_returns_all_interactions` |
+| Bounded concurrency: identical findings vs sequential, materially faster (R-E1) | `test_engine_concurrency_identical_findings`, `test_engine_concurrency_is_faster` |
+| `--rate` request-rate throttle honored across concurrency + calibration (R-E2) | `test_engine_rate_limit_caps_request_rate` |
+| CLI exposes `--concurrency`/`--rate`/`--oob-timeout`/`--oob-poll-interval` (rate must be > 0) | `test_cli_parses_scale_flags`, `test_cli_rejects_nonpositive_rate` |
 | Cross-OS payloads (POSIX + cmd.exe + PowerShell) generated and confirmed via OOB | `test_cmdi_oob_payloads_cover_posix_cmd_powershell`, `test_engine_confirms_powershell_oob`, `test_engine_confirms_cmd_exe_oob` |
 | Per-payload OOB tokens identify the firing separator | `test_cmdi_per_payload_tokens_identify_separator` |
 | Late / remote OOB callbacks are caught (poll-until-hit, bounded timeout) | `test_engine_poll_catches_late_oob_callback`, `test_engine_defers_oob_eval_for_delayed_callback` |
@@ -50,8 +57,14 @@ mapping. Run the suite with `python -m pytest -q` (88 tests as of v1.1).
 ## Known limitations (honest caveats)
 
 - **Windows payloads are validated for generation and OOB-confirmation wiring, not
-  executed against a real cmd.exe / PowerShell host in CI.** Real-shell + real
-  interactsh end-to-end validation is planned (R-C3 / R-D1 follow-up).
+  executed against a real cmd.exe / PowerShell host in CI.** Real-shell validation is
+  a follow-up.
+- **Real interactsh OOB is documented, not CI-tested.** The automated suite uses
+  fake OOB providers; a real remote-callback run is the job of
+  [interactsh-runbook.md](interactsh-runbook.md), not CI.
+- **Time-based probes run serially under concurrency.** To keep their latency
+  measurement uncontended, `--aggressive` time-based probes are not parallelised, so
+  an aggressive scan pays the full per-probe sleep latency sequentially.
 - **Time-based command-injection detection is `--aggressive`-only.** A default scan
   of a target vulnerable *only* to blind/time-based injection (no OOB reachability)
   reports nothing; the CLI prints a note to that effect so an empty report is not
