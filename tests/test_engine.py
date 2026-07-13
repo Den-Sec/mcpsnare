@@ -454,3 +454,200 @@ async def test_reachability_suppressed_when_check_ids_restricted():
     findings = await scan_session(DeadBackendCodeSession(), oob=None, transport="stdio",
                                   check_ids=["path_traversal"])
     assert not any(f.check == "reachability" for f in findings)
+
+
+# --- Gap 7: unauthenticated privileged proxy note (consumes the capability lens) ---
+
+@pytest.mark.asyncio
+async def test_privileged_proxy_note_on_unauthenticated_code_exec_stdio():
+    findings = await scan_session(DeadBackendCodeSession(), oob=None, transport="stdio")
+    notes = [f for f in findings if f.check == "privileged_proxy"]
+    assert len(notes) == 1
+    assert notes[0].severity.value == "info"
+    assert "execute_code:code-exec" in notes[0].evidence   # names the privileged capability
+
+
+@pytest.mark.asyncio
+async def test_no_privileged_proxy_note_when_authenticated_http():
+    # An authenticated scan (call_tool_unauth set => the CLI opened a --header session) is not
+    # an unauthenticated surface, so no note even with a declared privileged capability.
+    async def unauth(name, args):
+        return "x"
+    findings = await scan_session(DeadBackendCodeSession(), oob=None, transport="http",
+                                  call_tool_unauth=unauth)
+    assert not any(f.check == "privileged_proxy" for f in findings)
+
+
+@pytest.mark.asyncio
+async def test_no_privileged_proxy_note_on_benign_server():
+    findings = await scan_session(HealthySession(), oob=None, transport="stdio")
+    assert not any(f.check == "privileged_proxy" for f in findings)
+
+
+@pytest.mark.asyncio
+async def test_privileged_proxy_suppressed_when_check_ids_restricted():
+    findings = await scan_session(DeadBackendCodeSession(), oob=None, transport="stdio",
+                                  check_ids=["capability"])
+    assert not any(f.check == "privileged_proxy" for f in findings)
+
+
+# --- Gap 3: active code-injection confirmation against a real eval sink ---
+
+_CODE_SERVER = str(Path(__file__).parent / "fixtures" / "code_server" / "server.py")
+
+
+@pytest.mark.asyncio
+async def test_scan_confirms_code_injection_via_real_oob():
+    # A language-native payload really opens a socket to the local OOB listener from
+    # inside the eval sink - a genuine out-of-band proof of code execution, no Revit needed.
+    # This is the "flag -> confirm" step: capability only flags execute-code tools.
+    from mcpsnare.oob.local import LocalOOB
+    with LocalOOB() as oob:
+        async with stdio_session([sys.executable, _CODE_SERVER]) as session:
+            findings = await scan_session(session, oob=oob, transport="stdio",
+                                          check_ids=["code_injection"],
+                                          oob_poll_interval=0.1, oob_timeout=2.0)
+    confirmed = [f for f in findings
+                 if f.check == "code_injection" and f.confidence.value == "confirmed"]
+    assert len(confirmed) == 1                     # deduped to one finding for (tool, param)
+    assert confirmed[0].cwe == "CWE-94" and confirmed[0].param == "code"
+
+
+@pytest.mark.asyncio
+async def test_scan_code_injection_arithmetic_canary_firm_without_oob():
+    # No OOB reachable: the arithmetic canary (7*7 -> 49, reflected, absent from the benign
+    # baseline) still earns a FIRM finding.
+    async with stdio_session([sys.executable, _CODE_SERVER]) as session:
+        findings = await scan_session(session, oob=None, transport="stdio",
+                                      check_ids=["code_injection"])
+    firm = [f for f in findings if f.check == "code_injection" and f.confidence.value == "firm"]
+    assert len(firm) == 1                                     # the marker-reflected canary is the oracle
+    assert firm[0].cwe == "CWE-94"
+    assert "mcpsnareCANARY" in firm[0].payload               # the firing probe is a canary probe (not OOB/time)
+
+
+@pytest.mark.asyncio
+async def test_engine_dedup_upgrades_weaker_finding_to_stronger():
+    # A deferred OOB CONFIRMED must UPGRADE an inline FIRM for the same (check, tool, param);
+    # first-write-wins would wrongly keep the weaker FIRM.
+    from mcpsnare.models import Probe, Finding, Severity, Confidence
+    from mcpsnare.checks.base import REGISTRY
+
+    class UpgradeSpy:
+        id = "upgrade_spy"
+        def generate(self, point, ctx):
+            inline = Probe(check=self.id, point=point, payload="inline", args=point.set("x"))
+            oobp = Probe(check=self.id, point=point, payload="oob", args=point.set("y"), token="tok")
+            return [inline, oobp]                      # one inline (FIRM), one deferred OOB (CONFIRMED)
+        def evaluate(self, probe, response, ctx):
+            conf = Confidence.CONFIRMED if probe.token else Confidence.FIRM
+            return Finding(self.id, probe.point.tool, probe.point.param_name, Severity.HIGH,
+                           conf, "CWE-0", "t", probe.payload, "e", "r")
+
+    class HitOOB:
+        def new_token(self):
+            return ("tok", "http://oob/tok")
+        def interactions(self, t):
+            return [{"path": "/tok"}] if t == "tok" else []
+        def poll_all(self):
+            return {"tok": [{"path": "/tok"}]}
+
+    REGISTRY["upgrade_spy"] = UpgradeSpy()
+    try:
+        findings = await scan_session(FakeSession(), oob=HitOOB(), transport="stdio",
+                                      check_ids=["upgrade_spy"], oob_poll_interval=0.001, oob_timeout=0.05)
+    finally:
+        del REGISTRY["upgrade_spy"]
+    spy = [f for f in findings if f.check == "upgrade_spy"]
+    assert len(spy) == 1 and spy[0].confidence.value == "confirmed"   # FIRM upgraded, not kept
+
+
+@pytest.mark.asyncio
+async def test_scan_no_code_injection_on_noncode_params():
+    # code_injection must stay silent on a server with no code-ish param (vuln_server's
+    # host/path/user/mode) - it gates on the parameter name.
+    async with stdio_session([sys.executable, _SERVER]) as session:
+        findings = await scan_session(session, oob=None, transport="stdio")
+    assert not any(f.check == "code_injection" for f in findings)
+
+
+# --- Gap 6: ScanResult scan metadata ---
+
+@pytest.mark.asyncio
+async def test_scan_session_returns_scan_metadata():
+    from mcpsnare.models import ScanResult
+    result = await scan_session(FakeSession(), oob=None, transport="stdio", target="python s.py")
+    assert isinstance(result, ScanResult)
+    assert result.target == "python s.py"
+    assert result.transport == "stdio"
+    assert result.tools_discovered == 1
+    assert result.tools_reachable == 1                 # read_doc's benign call returns "ok"
+    assert "path_traversal" in result.checks_executed  # active checks listed
+    assert "capability" in result.checks_executed      # passive checks listed too
+    assert result.aggressive is False
+
+
+@pytest.mark.asyncio
+async def test_scan_metadata_time_based_skipped_counts_points_in_default_mode():
+    # FakeSession has one string injection point (read_doc.path); cmd/sql/code_injection
+    # are time-based-capable, so a default scan reports it as skipped-by-time-based.
+    default = await scan_session(FakeSession(), oob=None, transport="stdio")
+    assert default.time_based_skipped == 1
+    aggr = await scan_session(FakeSession(), oob=None, transport="stdio", aggressive=True)
+    assert aggr.time_based_skipped == 0
+
+
+@pytest.mark.asyncio
+async def test_scan_metadata_time_based_skipped_for_cmd_or_sql_only_scan():
+    # Each time-based-capable check must be counted on its own, not only when code_injection
+    # happens to be in the default set (regression: only code_injection had time_based=True).
+    for cid in ("cmd_injection", "sql_injection", "code_injection"):
+        default = await scan_session(FakeSession(), oob=None, transport="stdio", check_ids=[cid])
+        assert default.time_based_skipped == 1, cid
+
+
+@pytest.mark.asyncio
+async def test_scan_metadata_reachable_zero_when_backend_down():
+    result = await scan_session(DeadBackendCodeSession(), oob=None, transport="stdio")
+    assert result.tools_discovered == 1
+    assert result.tools_reachable == 0                 # every benign call errored
+
+
+# --- Gap 4: free-form dict container reached via a synthesized canary key ---
+
+class FreeFormDictSession:
+    """modify_element(parameters: dict[str,str]) - a free-form map whose values are funneled
+    into a path-traversal sink. Before Gap 4 the mapper emitted zero injection points here."""
+    async def list_tools(self):
+        return [ToolInfo("modify_element", "", {"type": "object",
+                "properties": {"parameters": {"type": "object",
+                                              "additionalProperties": {"type": "string"}}},
+                "required": ["parameters"]})]
+    async def call_tool(self, name, args):
+        params = args.get("parameters") or {}
+        if any("etc/passwd" in str(v) for v in params.values()):
+            return "root:x:0:0:root:/root:/bin/bash"
+        return "ok"
+
+
+@pytest.mark.asyncio
+async def test_engine_probes_free_form_dict_via_synthesized_key():
+    findings = await scan_session(FreeFormDictSession(), oob=None, transport="stdio",
+                                  check_ids=["path_traversal"])
+    confirmed = [f for f in findings
+                 if f.check == "path_traversal" and f.confidence.value == "confirmed"]
+    assert len(confirmed) == 1
+    assert confirmed[0].param == "parameters.mcpsnare"   # the synthesized open-map key
+
+
+@pytest.mark.asyncio
+async def test_scan_results_merge_via_add():
+    from mcpsnare.connect.resources import ResourceToolView
+    tool_scan = await scan_session(FakeSession(), oob=None, transport="stdio", target="python s.py")
+    res_scan = await scan_session(ResourceToolView(FakeResourceSession()), oob=None,
+                                  transport="stdio", check_ids=["path_traversal", "info_leak"])
+    merged = tool_scan + res_scan
+    assert merged.target == "python s.py"
+    assert merged.tools_discovered == tool_scan.tools_discovered + res_scan.tools_discovered
+    assert set(merged.checks_executed) >= {"path_traversal", "info_leak"}
+    assert len(merged) == len(tool_scan) + len(res_scan)

@@ -382,3 +382,104 @@ def test_sqli_time_based_firm_on_calibrated_delay():
     tprobe.meta["elapsed"] = 5.1
     f = s.evaluate(tprobe, "", ctx)
     assert f is not None and f.confidence.value == "firm" and f.cwe == "CWE-89"
+
+
+# --- Gap 3: code_injection (CWE-94) ---
+from mcpsnare.checks.code_injection import CodeInjection
+
+
+def _code_pt(name="code", tool="run_code"):
+    return InjectionPoint(tool, name, {name: "mcpsnare"}, name)
+
+
+def test_codei_gates_on_code_param_name():
+    c = CodeInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=PerPayloadOOB(), transport="stdio")
+    assert c.generate(_code_pt("code"), ctx)                       # code-ish -> probes
+    assert c.generate(_code_pt("name", tool="greet"), ctx) == []   # non-code -> none
+
+
+def test_codei_gate_matches_code_params_and_skips_others():
+    c = CodeInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=PerPayloadOOB(), transport="stdio")
+    for name in ["code", "script", "scripts", "expression", "python_code",
+                 "ironpython", "snippet", "formula", "evalExpr", "config.code"]:
+        pt = InjectionPoint("t", name, {}, name)
+        assert c.generate(pt, ctx), name
+    for name in ["query", "name", "barcode", "host", "path", "mode"]:
+        pt = InjectionPoint("t", name, {}, name)
+        assert c.generate(pt, ctx) == [], name
+
+
+def test_codei_generates_language_native_oob_payloads_with_distinct_tokens():
+    c = CodeInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=PerPayloadOOB(), transport="stdio")
+    oob_probes = [p for p in c.generate(_code_pt(), ctx) if p.token]
+    blob = " ".join(p.payload for p in oob_probes)
+    assert "urllib" in blob and "urllib2" in blob and "urlopen" in blob  # py3 + py2/ironpython
+    assert "require('http')" in blob                                     # node eval sink
+    assert len({p.token for p in oob_probes}) == len(oob_probes)         # per-payload tokens
+
+
+def test_codei_confirmed_on_oob_hit():
+    c = CodeInjection()
+    oob = PerPayloadOOB()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=oob, transport="stdio")
+    oob_probes = [p for p in c.generate(_code_pt(), ctx) if p.token]
+    oob.fired = oob_probes[0].token
+    f = c.evaluate(oob_probes[0], "", ctx)
+    assert f is not None and f.confidence.value == "confirmed"
+    assert f.cwe == "CWE-94" and f.severity.value == "critical" and f.param == "code"
+
+
+def test_codei_firm_on_arithmetic_canary_baseline_diff():
+    c = CodeInjection()
+    ctx = _ctx_with_baseline(0.1, response="error: name 'mcpsnare' is not defined")
+    canary = [p for p in c.generate(_code_pt(), ctx) if p.meta.get("canary")][0]
+    f = c.evaluate(canary, "mcpsnareCANARY49", ctx)
+    assert f is not None and f.confidence.value == "firm" and f.cwe == "CWE-94"
+
+
+def test_codei_tentative_canary_without_baseline():
+    c = CodeInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=None, transport="stdio")  # no baseline
+    canary = [p for p in c.generate(_code_pt(), ctx) if p.meta.get("canary")][0]
+    f = c.evaluate(canary, "result: mcpsnareCANARY49", ctx)
+    assert f is not None and f.confidence.value == "tentative"
+
+
+def test_codei_canary_suppressed_when_marker_in_baseline():
+    c = CodeInjection()
+    ctx = _ctx_with_baseline(0.1, response="mcpsnareCANARY49 already present")
+    canary = [p for p in c.generate(_code_pt(), ctx) if p.meta.get("canary")][0]
+    assert c.evaluate(canary, "mcpsnareCANARY49", ctx) is None
+
+
+def test_codei_no_finding_on_clean_response():
+    c = CodeInjection()
+    ctx = _ctx_with_baseline(0.1, response="ok")
+    for p in c.generate(_code_pt(), ctx):
+        if not p.meta.get("time_based"):
+            assert c.evaluate(p, "totally benign output", ctx) is None
+
+
+def test_codei_default_omits_time_based_probes():
+    c = CodeInjection()
+    ctx = CheckContext(call_tool=lambda n, a: "", oob=None, transport="stdio")  # not aggressive
+    probes = c.generate(_code_pt(), ctx)
+    assert probes and all(not p.meta.get("time_based") for p in probes)
+
+
+def test_codei_aggressive_enables_time_based_firm():
+    c = CodeInjection()
+    ctx = _ctx_with_baseline(0.1)  # aggressive=True via helper
+    tprobe = [p for p in c.generate(_code_pt(), ctx) if p.meta.get("time_based")][0]
+    tprobe.meta["elapsed"] = 5.1
+    f = c.evaluate(tprobe, "", ctx)
+    assert f is not None and f.confidence.value == "firm" and f.cwe == "CWE-94"
+
+
+def test_codei_registered():
+    import mcpsnare.checks  # noqa: F401
+    from mcpsnare.checks.base import REGISTRY
+    assert "code_injection" in REGISTRY

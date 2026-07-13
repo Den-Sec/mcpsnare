@@ -60,6 +60,11 @@ $ mcpsnare scan --stdio "python vulnerable_server.py" --output json
 }
 ```
 
+Every report also carries a **scan-metadata** block — target, transport, tools discovered vs.
+reachable, checks run, whether `--aggressive` was set, and how many injection points skipped the
+blocking time-based probes (JSON `scan`, SARIF `invocations`, a Markdown "Scan metadata" section).
+So an empty `findings` is distinguishable from "nothing was actually tested."
+
 ## Install
 
 ```bash
@@ -120,9 +125,11 @@ Every finding carries one of three confidence levels, each earned by a specific 
 | **FIRM** | A calibrated/inferred signal strongly indicates the issue, short of an OOB proof. | A response delay exceeds the per-tool calibrated baseline by the injected sleep (time-based cmd injection); a secret-shaped string appears in the probe response but not in the benign baseline (info leak); or an unauthenticated response matches the authenticated one only after stripping volatile fields like timestamps/ids (auth bypass). |
 | **TENTATIVE** | Pattern-only match, with no calibration to corroborate it. | A secret-shaped string matched, but no baseline was available to prove the input triggered it — review manually. |
 
-The OOB and canary checks emit only **CONFIRMED**. Auth-bypass emits **CONFIRMED**
-on a byte-identical response or **FIRM** on a match after stripping volatile fields.
-The timing and info-leak oracles are where **FIRM** and **TENTATIVE** arise. The passive
+The OOB and path-traversal canary checks emit only **CONFIRMED**. Auth-bypass emits
+**CONFIRMED** on a byte-identical response or **FIRM** on a match after stripping volatile
+fields. The timing, info-leak, and code-injection arithmetic-canary oracles are where
+**FIRM** and **TENTATIVE** arise (`code_injection` is CONFIRMED on an OOB callback, FIRM
+when the `7*7`→`49` canary is reflected and absent from the baseline). The passive
 `capability` and `tool_poisoning` lenses emit **FIRM** or **TENTATIVE** — a *declared*
 capability is not an exploit proof — and never **CONFIRMED**.
 
@@ -133,11 +140,20 @@ Active checks (probe a parameter, confirm via an oracle):
 | Check            | Vulnerability                  | CWE      |
 | ---------------- | ------------------------------ | -------- |
 | `cmd_injection`  | OS command injection           | CWE-78   |
+| `code_injection` | Code / eval-sink injection     | CWE-94   |
 | `ssrf`           | Server-side request forgery    | CWE-918  |
 | `path_traversal` | Path traversal                 | CWE-22   |
 | `auth_bypass`    | Missing authentication         | CWE-306  |
 | `info_leak`      | Secret / sensitive info leak   | CWE-200  |
 | `sql_injection`  | SQL injection                  | CWE-89   |
+
+`code_injection` speaks the sink's language: where `cmd_injection` sends shell metacharacters
+(a `SyntaxError` inside a Python/IronPython/JS `eval`), it injects language-native payloads
+(`urllib`/`urllib2`/`require('http')`) that call back out-of-band, plus an arithmetic canary
+(`7*7` → `49`) reflected in the response — turning a *declared* `execute_code` tool from
+flagged into **confirmed**. Injection points also reach values inside **free-form containers**
+(`additionalProperties`, bare `dict`, `list[dict]`), so a `modify_element(parameters: dict)`
+tool is probed, not skipped.
 
 Passive checks (read the tool manifest, zero tool calls — see [Passive vetting lens](#passive-vetting-lens)):
 
@@ -167,8 +183,10 @@ tool calls**, so they work even against a thin proxy or with no backend running:
 
 Passive findings are **declared capabilities, not confirmed exploits** — they tell you *what to
 vet*, never that the server is exploited. A scan also emits an INFO **`reachability`** note when
-most tools return connection-error baselines, so an empty active-scan result is never misread as
-"secure".
+most tools return connection-error baselines, and an INFO **`privileged_proxy`** note when a
+CRITICAL/HIGH capability is reached with no credential presented (local stdio, or HTTP with no auth
+header) — a lead to vet whether app-layer auth actually gates invocation, not a claim that it
+doesn't. So an empty active-scan result is never misread as "secure".
 
 ## Out-of-band (OOB) confirmation
 
@@ -206,11 +224,12 @@ how you use this tool.
 
 ## Validation
 
-mcpsnare is validated by an automated test suite (139 tests) against bundled
+mcpsnare is validated by an automated test suite (185 tests) against bundled
 deliberately-vulnerable fixture servers in `tests/fixtures/`. The suite exercises
-command injection (including cross-OS cmd.exe / PowerShell payloads), SSRF, path
-traversal, info-leak, SQL injection, nested/array/enum injection points, the passive
-capability/tool-poisoning lenses and the backend-reachability note, and the OOB,
+command injection (including cross-OS cmd.exe / PowerShell payloads), code/eval-sink
+injection (OOB-confirmed against a real `eval` sink), SSRF, path traversal, info-leak,
+SQL injection, nested/array/enum and free-form-container injection points, the passive
+capability/tool-poisoning lenses and the reachability/privileged-proxy notes, and the OOB,
 baseline-calibration, and false-positive-suppression paths end to end — over **both**
 stdio and a live in-process streamable-HTTP server, on Linux and Windows in CI. See
 [docs/claims-matrix.md](docs/claims-matrix.md) for the claim-to-test mapping.
@@ -221,10 +240,9 @@ reference server (13 tools, 2 resource templates) — clean run, zero false posi
 
 ## Roadmap
 
-- Active code/eval-sink injection: language-native payloads (Python/IronPython, template)
-  for `execute`-style tools, so a code-exec sink is *confirmed*, not only flagged.
-- Scan metadata in reports (target, tool count, reachability); tool-scope / permission-boundary checks.
+- Tool-scope / permission-boundary checks (which tools a token may reach).
 - Additional OOB providers and richer time-based oracles.
+- Real-shell (cmd.exe / PowerShell) validation of the Windows command-injection payloads in CI.
 
 ## License
 

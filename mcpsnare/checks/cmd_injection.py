@@ -26,6 +26,7 @@ _SLEEP_TEMPLATES = (
 @register
 class CmdInjection:
     id = "cmd_injection"
+    time_based = True   # emits blocking sleep probes under --aggressive (engine skip accounting)
     def generate(self, point, ctx):
         probes = []
         if ctx.oob is not None:

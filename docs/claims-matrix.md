@@ -2,13 +2,16 @@
 
 mcpsnare's honesty contract (PRD v1.1, R-F1): every public claim in the README is
 backed by a passing automated test, or it is softened/removed. This file is the
-mapping. Run the suite with `python -m pytest -q` (139 tests as of v0.4).
+mapping. Run the suite with `python -m pytest -q` (185 tests as of v0.5).
 
 ## Confidence taxonomy → backing tests
 
 | Confidence | Oracle | Backed by |
 | ---------- | ------ | --------- |
 | **CONFIRMED** (cmd injection, OOB) | Out-of-band callback received | `test_cmdi_confirmed_on_oob_hit`, `test_engine_confirms_cmd_oob_and_names_payload` |
+| **CONFIRMED** (code injection, OOB) | Language-native payload calls back out-of-band from the eval sink | `test_codei_confirmed_on_oob_hit`, `test_scan_confirms_code_injection_via_real_oob` |
+| **FIRM** (code injection, arithmetic canary) | `7*7`→`49` reflected in the response, absent from the benign baseline | `test_codei_firm_on_arithmetic_canary_baseline_diff`, `test_scan_code_injection_arithmetic_canary_firm_without_oob` |
+| **TENTATIVE** (code injection, canary) | Canary reflected but no baseline to corroborate | `test_codei_tentative_canary_without_baseline` |
 | **CONFIRMED** (SSRF, OOB) | Out-of-band callback received | `test_ssrf_injects_oob_url_and_confirms` |
 | **CONFIRMED** (path traversal, canary) | Canary value read back from the response | `test_traversal_confirmed_on_passwd_canary`, `test_scan_confirms_nested_array_enum_traversal` |
 | **CONFIRMED** (auth bypass, byte-identical) | Unauthenticated response is byte-identical to the authenticated one | `test_auth_bypass_confirmed_when_unauth_succeeds` |
@@ -45,7 +48,13 @@ mapping. Run the suite with `python -m pytest -q` (139 tests as of v0.4).
 | Streamable HTTP transport wired (session factory; CLI parses `--http`/headers) | `test_http_session_factory_exists`, `test_cli_parses_http_scan` |
 | Works over streamable HTTP (exercised end-to-end against a live in-process MCP server): list+call round-trip, confirmed path-traversal, confirmed auth-bypass via dual-session unauth, full CLI `--http` scan (dual-session with `--header` and single-session without) | `test_http_server_round_trip_list_and_call`, `test_scan_confirms_path_traversal_over_http`, `test_scan_confirms_auth_bypass_over_http_dual_session`, `test_cli_http_scan_confirms_findings_json`, `test_cli_http_scan_no_header_single_session` |
 | Reports in console / JSON / SARIF / Markdown | `test_json_report_structure`, `test_sarif_is_valid_json_with_rules`, `test_markdown_contains_title_and_severity` |
-| All six checks registered (cmd_injection, ssrf, path_traversal, auth_bypass, info_leak, sql_injection) | `test_all_v1_checks_registered` |
+| All six v1 checks registered (cmd_injection, ssrf, path_traversal, auth_bypass, info_leak, sql_injection) | `test_all_v1_checks_registered` |
+| Code/eval-sink injection (`code_injection`, CWE-94): language-native OOB (urllib/urllib2/node) + arithmetic canary, gated on code-shaped param names, confirmed against a real eval sink | `test_codei_registered`, `test_codei_gate_matches_code_params_and_skips_others`, `test_codei_generates_language_native_oob_payloads_with_distinct_tokens`, `test_scan_confirms_code_injection_via_real_oob`, `test_scan_no_code_injection_on_noncode_params` |
+| A stronger oracle firing later upgrades a weaker same-issue finding (OOB CONFIRMED not pre-empted by an inline canary FIRM) | `test_engine_dedup_upgrades_weaker_finding_to_stronger`, `test_scan_confirms_code_injection_via_real_oob` |
+| `ScanResult` carries scan metadata (target, tools discovered/reachable, checks run, aggressive, time-based skipped); list-like + list-equal for back-compat; two passes merge via `+` | `test_scan_result_is_list_like`, `test_scan_result_equals_list_for_back_compat`, `test_scan_result_add_merges_metadata_and_findings`, `test_scan_session_returns_scan_metadata`, `test_scan_metadata_time_based_skipped_counts_points_in_default_mode`, `test_scan_metadata_time_based_skipped_for_cmd_or_sql_only_scan`, `test_scan_metadata_reachable_zero_when_backend_down` |
+| Reports carry a scan-metadata block (JSON `scan`, SARIF `invocations`/`properties`, Markdown section) without breaking the plain-list path | `test_json_includes_scan_metadata_for_scanresult`, `test_json_no_scan_block_for_plain_list_back_compat`, `test_sarif_includes_invocation_properties_for_scanresult`, `test_sarif_no_invocations_for_plain_list_back_compat`, `test_markdown_includes_scan_metadata_section` |
+| Free-form containers are probed via a synthesized canary key (additionalProperties / bare dict / list[dict]); structured objects and `additionalProperties:false` are not | `test_points_additional_properties_map_gets_canary_key`, `test_points_bare_dict_no_properties_key_gets_canary_key`, `test_points_list_of_free_form_dict_gets_canary_key`, `test_points_structured_object_gets_no_canary_key`, `test_points_additional_properties_false_gets_no_canary_key`, `test_engine_probes_free_form_dict_via_synthesized_key` |
+| Unauthenticated-privileged-proxy note (`privileged_proxy`, INFO): emitted on a CRITICAL/HIGH capability reached with no credential, suppressed when authenticated or check-restricted | `test_privileged_proxy_note_on_unauthenticated_code_exec_stdio`, `test_no_privileged_proxy_note_when_authenticated_http`, `test_no_privileged_proxy_note_on_benign_server`, `test_privileged_proxy_suppressed_when_check_ids_restricted` |
 | Resource templates scanned: a templated URI param is a traversal injection point (R-A6) | `test_resource_tool_view_exposes_templates_as_tools`, `test_engine_confirms_traversal_in_resource_template` |
 | SQL injection: error-based (FIRM on baseline-diff / TENTATIVE pattern-only) + calibrated time-based (CWE-89) | `test_sqli_firm_on_error_signature_diff`, `test_sqli_suppressed_when_error_in_baseline`, `test_sqli_tentative_error_without_baseline`, `test_sqli_time_based_firm_on_calibrated_delay` |
 | Passive `capability` lens: flags declared code-exec (CRITICAL/CWE-94), fs-write (HIGH/CWE-73), destructive (HIGH/CWE-749), fs-read (MEDIUM/CWE-22), SSRF (MEDIUM/CWE-918) from the manifest | `test_capability_flags_code_execution_critical`, `test_capability_flags_filesystem_write_high`, `test_capability_flags_destructive_high`, `test_capability_flags_filesystem_read_medium`, `test_capability_flags_network_ssrf_medium` |

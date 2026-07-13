@@ -61,3 +61,61 @@ def test_injection_point_embed_empty_when_leaf_absent():
     from mcpsnare.models import InjectionPoint
     p = InjectionPoint(tool="t", json_path="missing", base_args={}, param_name="missing")
     assert p.embed("PAY")["missing"] == "PAY"
+
+
+# --- Gap 6: ScanResult (findings + scan metadata, list-like for back-compat) ---
+
+def _find(check="c", param="p", sev=None, conf=None):
+    return Finding(check, "t", param, sev or Severity.INFO, conf or Confidence.TENTATIVE,
+                   "", "T", "P", "E", "R")
+
+
+def test_scan_result_is_list_like():
+    from mcpsnare.models import ScanResult
+    f = _find()
+    r = ScanResult(findings=[f], target="python s.py", transport="stdio",
+                   tools_discovered=3, tools_reachable=2, checks_executed=["cmd_injection"],
+                   aggressive=True, time_based_skipped=0)
+    assert len(r) == 1
+    assert r[0] is f
+    assert list(r) == [f]
+    assert [x for x in r] == [f]
+
+
+def test_scan_result_equals_list_for_back_compat():
+    from mcpsnare.models import ScanResult
+    assert ScanResult(findings=[]) == []
+    f = _find()
+    assert ScanResult(findings=[f]) == [f]
+    assert (ScanResult(findings=[]) == [f]) is False
+
+
+def test_scan_result_bool_reflects_findings():
+    from mcpsnare.models import ScanResult
+    assert not ScanResult(findings=[])
+    assert ScanResult(findings=[_find()])
+
+
+def test_scan_result_add_merges_metadata_and_findings():
+    from mcpsnare.models import ScanResult
+    f1, f2 = _find(check="cmd", param="host"), _find(check="path_traversal", param="path")
+    a = ScanResult(findings=[f1], target="tgt", transport="stdio", tools_discovered=3,
+                   tools_reachable=3, checks_executed=["cmd_injection", "ssrf"],
+                   aggressive=False, time_based_skipped=3)
+    b = ScanResult(findings=[f2], target="", transport="stdio", tools_discovered=1,
+                   tools_reachable=1, checks_executed=["path_traversal", "info_leak"],
+                   aggressive=True, time_based_skipped=1)
+    m = a + b
+    assert m.findings == [f1, f2]                 # concatenated
+    assert m.target == "tgt" and m.transport == "stdio"   # non-empty preferred
+    assert m.tools_discovered == 4 and m.tools_reachable == 4  # summed
+    assert m.checks_executed == ["cmd_injection", "ssrf", "path_traversal", "info_leak"]  # union, ordered
+    assert m.aggressive is True                   # OR
+    assert m.time_based_skipped == 4              # summed
+
+
+def test_scan_result_iadd_uses_add():
+    from mcpsnare.models import ScanResult
+    r = ScanResult(findings=[])
+    r += ScanResult(findings=[_find()], tools_discovered=1)
+    assert len(r) == 1 and r.tools_discovered == 1

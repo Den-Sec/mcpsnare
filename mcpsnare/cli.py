@@ -24,6 +24,14 @@ def aggressive_note(aggressive: bool) -> str | None:
             "Re-run with --aggressive to add time-based command-injection and SQL-injection detection.")
 
 
+def scan_header(result) -> str:
+    """One-line console summary of the scan's metadata (target, coverage, checks), so a
+    console report says what was actually tested, not only what was found."""
+    return (f"[i] Target {result.target or '(n/a)'} ({result.transport}): "
+            f"{result.tools_discovered} tool(s), {result.tools_reachable} reachable; "
+            f"checks: {', '.join(result.checks_executed)}; aggressive={result.aggressive}")
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="mcpsnare")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -73,10 +81,11 @@ async def _run(args):
                 findings = await scan_session(sess, oob=oob, transport="stdio", aggressive=args.aggressive,
                                               concurrency=args.concurrency, rate=args.rate,
                                               oob_timeout=args.oob_timeout,
-                                              oob_poll_interval=args.oob_poll_interval)
+                                              oob_poll_interval=args.oob_poll_interval, target=args.stdio)
                 findings += await scan_session(ResourceToolView(sess), oob=oob, transport="stdio",
                                                aggressive=args.aggressive, concurrency=args.concurrency,
-                                               rate=args.rate, check_ids=["path_traversal", "info_leak"])
+                                               rate=args.rate, check_ids=["path_traversal", "info_leak"],
+                                               target=args.stdio)
         else:
             headers = dict(h.split(":", 1) for h in args.header)
             async with http_session(args.http, headers=headers) as sess:
@@ -86,18 +95,20 @@ async def _run(args):
                                                       call_tool_unauth=sess_unauth.call_tool, aggressive=args.aggressive,
                                                       concurrency=args.concurrency, rate=args.rate,
                                                       oob_timeout=args.oob_timeout,
-                                                      oob_poll_interval=args.oob_poll_interval)
+                                                      oob_poll_interval=args.oob_poll_interval, target=args.http)
                         findings += await scan_session(ResourceToolView(sess), oob=oob, transport="http",
                                                        aggressive=args.aggressive, concurrency=args.concurrency,
-                                                       rate=args.rate, check_ids=["path_traversal", "info_leak"])
+                                                       rate=args.rate, check_ids=["path_traversal", "info_leak"],
+                                                       target=args.http)
                 else:
                     findings = await scan_session(sess, oob=oob, transport="http", aggressive=args.aggressive,
                                                   concurrency=args.concurrency, rate=args.rate,
                                                   oob_timeout=args.oob_timeout,
-                                                  oob_poll_interval=args.oob_poll_interval)
+                                                  oob_poll_interval=args.oob_poll_interval, target=args.http)
                     findings += await scan_session(ResourceToolView(sess), oob=oob, transport="http",
                                                    aggressive=args.aggressive, concurrency=args.concurrency,
-                                                   rate=args.rate, check_ids=["path_traversal", "info_leak"])
+                                                   rate=args.rate, check_ids=["path_traversal", "info_leak"],
+                                                   target=args.http)
     finally:
         if oob_cm:
             oob_cm.__exit__(None, None, None)
@@ -105,6 +116,7 @@ async def _run(args):
     if args.output in renderers:
         print(renderers[args.output](findings))
     else:
+        print(scan_header(findings))
         print(f"\n{len(findings)} finding(s):")
         for f in findings:
             print(f"  [{f.severity.value.upper()}] {f.title}  ({f.confidence.value})")

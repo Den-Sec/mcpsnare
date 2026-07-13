@@ -34,3 +34,13 @@ def test_cli_rejects_nonpositive_rate():
     import pytest
     with pytest.raises(SystemExit):
         build_parser().parse_args(["scan", "--http", "http://h/mcp", "--rate", "0"])
+
+
+def test_scan_header_summarizes_metadata():
+    from mcpsnare.cli import scan_header
+    from mcpsnare.models import ScanResult
+    r = ScanResult(findings=[], target="python s.py", transport="stdio",
+                   tools_discovered=3, tools_reachable=2, checks_executed=["cmd_injection"],
+                   aggressive=True, time_based_skipped=0)
+    h = scan_header(r)
+    assert "python s.py" in h and "3 tool" in h and "2 reachable" in h and "cmd_injection" in h

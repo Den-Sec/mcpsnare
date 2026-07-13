@@ -29,6 +29,7 @@ _TIME_TEMPLATES = (
 @register
 class SqlInjection:
     id = "sql_injection"
+    time_based = True   # emits blocking sleep probes under --aggressive (engine skip accounting)
 
     def generate(self, point, ctx):
         probes = []

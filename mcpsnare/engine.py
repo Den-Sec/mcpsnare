@@ -5,9 +5,14 @@ import time
 from dataclasses import replace
 from mcpsnare.inject.mapper import injection_points, build_baseline
 from mcpsnare.checks.base import REGISTRY, PASSIVE_REGISTRY, CheckContext
-from mcpsnare.models import ToolBaseline, Finding, Severity, Confidence
+from mcpsnare.models import ToolBaseline, Finding, ScanResult, Severity, Confidence
 
 _CALIBRATION_CALLS = 2
+
+# Confidence ordering for same-issue dedup: a stronger oracle firing later (e.g. a
+# deferred OOB CONFIRMED) must upgrade an already-collected weaker finding (e.g. an inline
+# arithmetic-canary FIRM) for the same (check, tool, param), never be dropped by it.
+_CONF_RANK = {Confidence.CONFIRMED: 3, Confidence.FIRM: 2, Confidence.TENTATIVE: 1}
 
 # Fraction of probed tools whose benign baseline must look like a connection error
 # before the scan flags the backend as unreachable (active checks inconclusive).
@@ -74,20 +79,27 @@ async def _calibrate(session, tool, gate=None):
 
 async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=None,
                        check_ids=None, oob_poll_interval=2.5, oob_timeout=20.0, calibrate=True,
-                       aggressive=False, concurrency=4, rate=None):
+                       aggressive=False, concurrency=4, rate=None, target=""):
     ctx = CheckContext(oob=oob, transport=transport,
                        call_tool_unauth=call_tool_unauth, aggressive=aggressive)
     tools = await session.list_tools()
     checks = [c for cid, c in REGISTRY.items() if not check_ids or cid in check_ids]
-    findings, seen = [], set()
+    # Any selected check that emits blocking time-based probes only under --aggressive
+    # (cmd_injection, sql_injection, code_injection). Used to report how many injection
+    # points were left un-probed by blocking oracles in a default scan.
+    tb_active = any(getattr(c, "time_based", False) for c in checks)
+    findings, seen = [], {}  # key -> index into findings (dedup + confidence upgrade)
 
     def collect(finding):
         if not finding:
             return
         key = (finding.check, finding.tool, finding.param)
-        if key not in seen:
-            seen.add(key)
+        idx = seen.get(key)
+        if idx is None:
+            seen[key] = len(findings)
             findings.append(finding)
+        elif _CONF_RANK.get(finding.confidence, 0) > _CONF_RANK.get(findings[idx].confidence, 0):
+            findings[idx] = finding  # a stronger oracle fired for the same issue -> upgrade
 
     # Passive lenses: inspect the tool manifest (name/description/schema) with ZERO
     # tool calls, before any active probing. This is what makes a vetting scan honest
@@ -101,6 +113,34 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
                     collect(f)
             except Exception:
                 pass  # a passive check must never break the scan
+
+    # Unauthenticated privileged surface: the manifest declares a high-severity capability
+    # (code-exec / fs-write / destructive...) AND this scan reached the manifest WITHOUT presenting
+    # a credential (local stdio, or HTTP with no auth header). This is a vetting LEAD, not a proof:
+    # `call_tool_unauth is None` shows no credential was presented, NOT that app-layer auth is absent
+    # (a server can still gate call_tool behind auth). So the note flags the surface to vet and
+    # explicitly says the auth boundary was not verified - never that the capability is "directly
+    # usable". Consumes the capability lens' output. Gated to the full scan (check_ids is None) so the
+    # resource-only second pass does not duplicate it.
+    if check_ids is None and call_tool_unauth is None:
+        privileged = sorted({f"{f.tool}:{f.param}" for f in findings
+                             if f.check == "capability"
+                             and f.severity in (Severity.CRITICAL, Severity.HIGH)})
+        if privileged:
+            collect(Finding(
+                check="privileged_proxy", tool="(scan)", param="(auth)",
+                severity=Severity.INFO, confidence=Confidence.TENTATIVE, cwe="CWE-306",
+                title="Privileged capability reached with no credential presented (auth boundary unverified)",
+                payload="(scan diagnostic)",
+                evidence=(f"The server declares high-severity capability ({', '.join(privileged)}) and this scan "
+                          f"reached its manifest over {transport} without presenting any credential. Whether an "
+                          f"application-layer auth check gates actual invocation was NOT verified by this scan "
+                          f"(no credential was required to enumerate the tools; call_tool may still be auth-gated). "
+                          f"Vet this: if the server fronts a privileged backend with no auth (the unauthenticated-"
+                          f"proxy pattern), the declared capability is exposed to anyone who can reach the transport."),
+                remediation=("Confirm whether privileged tools require authentication; if not, put auth in front of "
+                             "them or restrict the server to a trusted local socket. Never expose an unauthenticated "
+                             "code-exec / filesystem tool.")))
 
     deferred = []
     sem = asyncio.Semaphore(max(1, concurrency))
@@ -139,8 +179,10 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
     timed = []   # time-based probes: run serially, uncontended (see below)
     tasks = []
     probed = errored = 0   # backend-reachability accounting (see below)
+    points_total = 0       # total injection points (for time_based_skipped metadata)
     for tool in tools:
         points = injection_points(tool)
+        points_total += len(points)
         # Per-tool context: concurrent tools must NOT share a mutated baseline.
         baseline = await _calibrate(session, tool, gate) if (calibrate and points) else None
         tool_ctx = replace(ctx, baseline=baseline)
@@ -198,4 +240,15 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
             await asyncio.sleep(oob_poll_interval)
         for check, probe, resp, tool_ctx in deferred:
             collect(check.evaluate(probe, resp, tool_ctx))
-    return findings
+    return ScanResult(
+        findings=findings,
+        target=target,
+        transport=transport,
+        tools_discovered=len(tools),
+        tools_reachable=probed - errored,
+        checks_executed=[c.id for c in checks] + [c.id for c in passive_checks],
+        aggressive=aggressive,
+        # default scan skips blocking time-based probes: report the injection points left
+        # un-exercised by them so an empty result is not misread as "secure".
+        time_based_skipped=points_total if (tb_active and not aggressive) else 0,
+    )

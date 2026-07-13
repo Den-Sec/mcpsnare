@@ -2,6 +2,7 @@ from mcpsnare.models import ToolInfo, InjectionPoint
 
 _MAX_DEPTH = 4
 _STRING_DEFAULT = "mcpsnare"
+_CANARY_KEY = _STRING_DEFAULT   # synthesized key name for free-form/open-map injection points
 _FORMAT_SAMPLES = {
     "uri": "https://mcpsnare.example/probe",
     "uri-reference": "https://mcpsnare.example/probe",
@@ -50,6 +51,36 @@ def _branch(schema, root):
     return schema
 
 
+def _open_additional(schema):
+    """Value-schema for extra keys when the object is an OPEN map, else None.
+    ``additionalProperties`` as a subschema -> that schema; ``True`` -> free string;
+    ``False``/absent -> None (not an explicitly open map)."""
+    ap = schema.get("additionalProperties")
+    if isinstance(ap, dict):
+        return ap
+    if ap is True:
+        return {"type": "string"}
+    return None
+
+
+def _freeform_value(schema):
+    """Value-schema for a synthesized canary key on a FREE-FORM object, or None for a fixed
+    structured shape (Gap 4). An explicit open ``additionalProperties`` always wins. Otherwise
+    an object that declares NO ``properties`` key at all is a free-form dict (JSON-Schema's
+    ``additionalProperties`` defaults to true) - e.g. ``modify_element(parameters: dict)``,
+    whose values a state-changing tool funnels into a sink but which today gets zero probes.
+    A declared shape (``properties`` present, even ``{}`` for a no-arg tool) or an
+    ``additionalProperties: false`` object is NOT free-form."""
+    open_ap = _open_additional(schema)
+    if open_ap is not None:
+        return open_ap
+    if "properties" in schema:                       # declared shape (incl. empty {}) -> not free-form
+        return None
+    if schema.get("additionalProperties") is False:  # explicitly closed
+        return None
+    return {"type": "string"}                        # typed/typeless object, no declared shape
+
+
 def _string_value(schema):
     fmt = schema.get("format")
     if fmt in _FORMAT_SAMPLES:
@@ -75,6 +106,8 @@ def _baseline(schema, root, depth):
             t = "object"
         elif "items" in schema:
             t = "array"
+        elif _open_additional(schema) is not None:  # typeless open map -> object (build {})
+            t = "object"
     if t == "string":
         return _string_value(schema)
     if t == "integer":
@@ -125,6 +158,8 @@ def _walk(schema, path, root, depth, out, seen_refs):
             t = "object"
         elif "items" in schema:
             t = "array"
+        elif _open_additional(schema) is not None:  # typeless open map (only additionalProperties)
+            t = "object"
     if t == "string":
         if not schema.get("enum") and "const" not in schema:
             out.append(path)
@@ -133,6 +168,12 @@ def _walk(schema, path, root, depth, out, seen_refs):
         for name, sub in schema.get("properties", {}).items():
             child = f"{path}.{name}" if path else name
             _walk(sub, child, root, depth + 1, out, seen_refs)
+        # Free-form container (additionalProperties / bare dict): probe a synthesized canary
+        # key so state-changing tools carrying content in an open map are not left un-probed.
+        free = _freeform_value(schema)
+        if free is not None:
+            key = f"{path}.{_CANARY_KEY}" if path else _CANARY_KEY
+            _walk(free, key, root, depth + 1, out, seen_refs)
     elif t == "array":
         items = schema.get("items")
         if isinstance(items, dict):

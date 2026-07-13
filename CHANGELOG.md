@@ -3,6 +3,49 @@
 All notable changes to mcpsnare are documented here. Versions follow a simple
 0.x scheme (the public interface is not yet frozen).
 
+## 0.5.0 - 2026-07-13 - "confirm the code sink + honest reports"
+
+The passive lens *flagged* an `execute_revit_code`-style tool; the active checks could not
+*confirm* it, because `cmd_injection`'s shell metacharacters are a SyntaxError inside a
+language interpreter. And a bare `results: []` could not be told apart from "nothing was
+actually tested". This release closes both.
+
+### Added
+- **Active code/eval-sink injection (`code_injection`, CWE-94).** Speaks the sink's
+  language: injects language-native OOB payloads (CPython `urllib`, Python 2 / IronPython
+  `urllib2`, Node `require('http')`) with a per-payload token, and an arithmetic canary
+  (`7*7` -> `49`) whose evaluation is reflected in the response. **CONFIRMED** on an OOB
+  callback, **FIRM** on the canary reflected and absent from the benign baseline,
+  **TENTATIVE** on the canary with no baseline; a `time.sleep` time-based variant is
+  `--aggressive`-only. Gates on code-shaped parameter names (`code`/`script`/`expression`/
+  `eval`/`python`/`ironpython`/`snippet`/`formula`, not `query`/`command`). A new
+  `tests/fixtures/code_server` (a real `eval`/`exec` sink) confirms it in CI - a payload
+  really opens a socket to the local listener, no Revit needed.
+- **`ScanResult` with scan metadata.** `scan_session` now returns a `ScanResult` carrying
+  `target`, `transport`, `tools_discovered`, `tools_reachable`, `checks_executed`,
+  `aggressive`, and `time_based_skipped` alongside the findings, so an empty report is
+  distinguishable from an untested one. Reports gained a scan-metadata block (JSON `scan`,
+  SARIF `invocations`/`properties`, Markdown "Scan metadata" + honesty notes); the CLI
+  prints a one-line scan header. `ScanResult` is list-like (iterate/`len`/index/`== []`)
+  and merges two passes via `+` (back-compatible with every existing caller).
+- **Free-form container coverage (mapper).** Injection-point mapping now reaches values
+  inside open maps - `additionalProperties`, a bare/typeless `dict`, and `list[dict]` - by
+  synthesizing a canary key (`modify_element(parameters: dict)` now yields a
+  `parameters.mcpsnare` injection point). Structured objects and `additionalProperties:false`
+  are untouched, so no new noise on fixed schemas.
+- **Unauthenticated-privileged-proxy note (`privileged_proxy`, CWE-306, INFO).** When the
+  manifest declares a CRITICAL/HIGH capability and the scan reached the tools with no
+  credential (local stdio, or HTTP with no auth header), the transport is the only access
+  control - flagged for vetting. Consumes the `capability` lens output.
+
+### Changed
+- **Confidence-aware dedup.** For a given `(check, tool, param)` a later, stronger oracle
+  (e.g. a deferred OOB CONFIRMED) now upgrades an earlier weaker finding (e.g. an inline
+  canary FIRM) instead of being dropped by first-write-wins.
+
+### Notes
+- 46 new tests; suite is now 185 green. No breaking changes to callers or report consumers.
+
 ## 0.4.0 - 2026-07-13 - "passive vetting lens"
 
 Active confirmation is blind to what a server *declares*. Scanning a real target
