@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mcpsnare"
 dynamic = ["version"]
-description = "Active, confirmation-driven security scanner for MCP (Model Context Protocol) servers - Burp Active Scan, for MCP."
+description = "Active security scanner that pentests MCP (Model Context Protocol) servers - triggers and out-of-band-confirms real vulnerabilities. Like Burp's Active Scan, but the target is an MCP server."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

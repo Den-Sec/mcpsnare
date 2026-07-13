@@ -406,3 +406,51 @@ async def test_engine_confirms_traversal_in_resource_template():
                  if f.check == "path_traversal" and f.confidence.value == "confirmed"]
     assert len(confirmed) == 1
     assert confirmed[0].param == "path"   # the templated URI param is the injection point
+
+
+# --- passive lens + reachability wiring (net-new in v0.4) ---
+
+class DeadBackendCodeSession:
+    """Declares a dangerous execute_code tool; every call_tool raises (backend down)."""
+    async def list_tools(self):
+        return [ToolInfo("execute_code", "Execute IronPython code directly in Revit context.",
+                {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]})]
+    async def call_tool(self, name, args):
+        raise ConnectionError("All connection attempts failed")
+
+
+class HealthySession:
+    async def list_tools(self):
+        return [ToolInfo("read_doc", "", {"type": "object",
+                "properties": {"path": {"type": "string"}}, "required": ["path"]})]
+    async def call_tool(self, name, args):
+        return "ok"
+
+
+@pytest.mark.asyncio
+async def test_passive_capability_flagged_without_live_backend():
+    # The passive lens is manifest-only: it must surface the declared RCE tool even
+    # though every tool call fails. This is the exact false-negative the feature fixes.
+    findings = await scan_session(DeadBackendCodeSession(), oob=None, transport="stdio")
+    caps = [f for f in findings if f.check == "capability"]
+    assert any(f.severity.value == "critical" and f.param == "code-exec" for f in caps)
+
+
+@pytest.mark.asyncio
+async def test_reachability_note_emitted_when_backend_down():
+    findings = await scan_session(DeadBackendCodeSession(), oob=None, transport="stdio")
+    assert any(f.check == "reachability" and f.severity.value == "info" for f in findings)
+
+
+@pytest.mark.asyncio
+async def test_no_reachability_note_when_backend_healthy():
+    findings = await scan_session(HealthySession(), oob=None, transport="stdio")
+    assert not any(f.check == "reachability" for f in findings)
+
+
+@pytest.mark.asyncio
+async def test_reachability_suppressed_when_check_ids_restricted():
+    # A restricted scan (e.g. the resource-only second pass) must not duplicate the note.
+    findings = await scan_session(DeadBackendCodeSession(), oob=None, transport="stdio",
+                                  check_ids=["path_traversal"])
+    assert not any(f.check == "reachability" for f in findings)

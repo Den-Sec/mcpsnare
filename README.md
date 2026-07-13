@@ -1,6 +1,6 @@
 # mcpsnare
 
-**The active security scanner for MCP servers — _Burp Active Scan, for the Model Context Protocol._**
+**Active security scanner for MCP servers.** It pentests Model Context Protocol servers and confirms real, exploitable vulnerabilities — think Burp Suite's Active Scan, but pointed at an MCP server, not a website.
 
 [![ci](https://github.com/Den-Sec/mcpsnare/actions/workflows/ci.yml/badge.svg)](https://github.com/Den-Sec/mcpsnare/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/mcpsnare.svg)](https://pypi.org/project/mcpsnare/)
@@ -14,6 +14,10 @@ carries a graded confidence level.
 
 Most "MCP security" tools pattern-match configs and source code. mcpsnare **triggers the
 vulnerability and catches the proof**: a `CONFIRMED` finding is exploitable, not theoretical.
+
+For **adoption vetting**, mcpsnare adds a passive manifest lens that surfaces the dangerous
+capabilities a server *declares* — even against a thin proxy or with no backend reachable
+(see [Passive vetting lens](#passive-vetting-lens)).
 
 > _(Formerly published as `mcprobe`.)_
 
@@ -118,9 +122,13 @@ Every finding carries one of three confidence levels, each earned by a specific 
 
 The OOB and canary checks emit only **CONFIRMED**. Auth-bypass emits **CONFIRMED**
 on a byte-identical response or **FIRM** on a match after stripping volatile fields.
-The timing and info-leak oracles are where **FIRM** and **TENTATIVE** arise.
+The timing and info-leak oracles are where **FIRM** and **TENTATIVE** arise. The passive
+`capability` and `tool_poisoning` lenses emit **FIRM** or **TENTATIVE** — a *declared*
+capability is not an exploit proof — and never **CONFIRMED**.
 
 ## Checks
+
+Active checks (probe a parameter, confirm via an oracle):
 
 | Check            | Vulnerability                  | CWE      |
 | ---------------- | ------------------------------ | -------- |
@@ -131,8 +139,36 @@ The timing and info-leak oracles are where **FIRM** and **TENTATIVE** arise.
 | `info_leak`      | Secret / sensitive info leak   | CWE-200  |
 | `sql_injection`  | SQL injection                  | CWE-89   |
 
+Passive checks (read the tool manifest, zero tool calls — see [Passive vetting lens](#passive-vetting-lens)):
+
+| Check            | What it flags                                        | CWE               |
+| ---------------- | ---------------------------------------------------- | ----------------- |
+| `capability`     | Declared dangerous capability (code-exec, fs, destructive, SSRF) | CWE-94/73/749/22/918 |
+| `tool_poisoning` | Prompt-injection / hidden-unicode / URLs in descriptions | CWE-94        |
+
 mcpsnare also enumerates MCP **resource templates** and treats their templated URI
 params (e.g. `file:///{path}`) as injection points for path-traversal and info-leak.
+
+## Passive vetting lens
+
+Active confirmation needs a live, reachable backend and a sink it can trip. When you are
+**vetting an MCP server for adoption**, two things matter that active probing can miss: the
+dangerous capabilities the server *declares*, and poisoned tool descriptions. mcpsnare adds
+two **passive** checks that read the tool manifest (names, descriptions, schemas) with **zero
+tool calls**, so they work even against a thin proxy or with no backend running:
+
+- **`capability`** — flags tools whose manifest declares a high-risk capability: arbitrary
+  code/command execution (CRITICAL), filesystem write/link and destructive operations (HIGH),
+  filesystem read and SSRF-capable fetch (MEDIUM). Confidence is **FIRM** when several
+  independent signals agree (name verb + description + parameter), else **TENTATIVE**.
+- **`tool_poisoning`** — flags imperative-injection phrasing ("ignore previous instructions"),
+  invisible/bidirectional unicode, and embedded URLs in tool/parameter descriptions, which the
+  driving LLM reads verbatim.
+
+Passive findings are **declared capabilities, not confirmed exploits** — they tell you *what to
+vet*, never that the server is exploited. A scan also emits an INFO **`reachability`** note when
+most tools return connection-error baselines, so an empty active-scan result is never misread as
+"secure".
 
 ## Out-of-band (OOB) confirmation
 
@@ -170,10 +206,11 @@ how you use this tool.
 
 ## Validation
 
-mcpsnare is validated by an automated test suite (119 tests) against bundled
+mcpsnare is validated by an automated test suite (139 tests) against bundled
 deliberately-vulnerable fixture servers in `tests/fixtures/`. The suite exercises
 command injection (including cross-OS cmd.exe / PowerShell payloads), SSRF, path
-traversal, info-leak, SQL injection, nested/array/enum injection points, and the OOB,
+traversal, info-leak, SQL injection, nested/array/enum injection points, the passive
+capability/tool-poisoning lenses and the backend-reachability note, and the OOB,
 baseline-calibration, and false-positive-suppression paths end to end — over **both**
 stdio and a live in-process streamable-HTTP server, on Linux and Windows in CI. See
 [docs/claims-matrix.md](docs/claims-matrix.md) for the claim-to-test mapping.
@@ -184,8 +221,9 @@ reference server (13 tools, 2 resource templates) — clean run, zero false posi
 
 ## Roadmap
 
-- MCP-specific checks: tool-poisoning / prompt-injection via tool descriptions,
-  and tool-scope / permission-boundary violations.
+- Active code/eval-sink injection: language-native payloads (Python/IronPython, template)
+  for `execute`-style tools, so a code-exec sink is *confirmed*, not only flagged.
+- Scan metadata in reports (target, tool count, reachability); tool-scope / permission-boundary checks.
 - Additional OOB providers and richer time-based oracles.
 
 ## License

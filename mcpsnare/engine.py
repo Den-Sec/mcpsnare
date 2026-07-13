@@ -1,12 +1,26 @@
 import asyncio
 import math
+import re
 import time
 from dataclasses import replace
 from mcpsnare.inject.mapper import injection_points, build_baseline
-from mcpsnare.checks.base import REGISTRY, CheckContext
-from mcpsnare.models import ToolBaseline
+from mcpsnare.checks.base import REGISTRY, PASSIVE_REGISTRY, CheckContext
+from mcpsnare.models import ToolBaseline, Finding, Severity, Confidence
 
 _CALIBRATION_CALLS = 2
+
+# Fraction of probed tools whose benign baseline must look like a connection error
+# before the scan flags the backend as unreachable (active checks inconclusive).
+_UNREACHABLE_RATIO = 0.8
+
+# Connection-error-shaped baselines. Matches both mcpsnare's own swallow ("error: ..."
+# when call_tool raises) AND downstream strings from proxy servers that catch the
+# transport error and return it as normal tool output (e.g. the revit-mcp proxy returns
+# "Error: All connection attempts failed" / "...actively refused it").
+_CONN_ERR = re.compile(
+    r"(?i)(^error:\s|connection\s+(refused|reset|attempts\s+failed)|connection\s+timed\s*out|"
+    r"actively\s+refused|getaddrinfo|name or service not known|max retries|"
+    r"winerror\s*10061|errno\s*(111|61|10061)|failed to establish|connect call failed)")
 
 
 class _RateGate:
@@ -75,6 +89,19 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
             seen.add(key)
             findings.append(finding)
 
+    # Passive lenses: inspect the tool manifest (name/description/schema) with ZERO
+    # tool calls, before any active probing. This is what makes a vetting scan honest
+    # against a thin proxy or a dead backend - a declared arbitrary-code-execution tool
+    # is surfaced from the manifest even when active checks can confirm nothing.
+    passive_checks = [c for cid, c in PASSIVE_REGISTRY.items() if not check_ids or cid in check_ids]
+    for tool in tools:
+        for pcheck in passive_checks:
+            try:
+                for f in pcheck.inspect(tool, ctx):
+                    collect(f)
+            except Exception:
+                pass  # a passive check must never break the scan
+
     deferred = []
     sem = asyncio.Semaphore(max(1, concurrency))
     gate = _RateGate(rate)
@@ -111,11 +138,16 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
 
     timed = []   # time-based probes: run serially, uncontended (see below)
     tasks = []
+    probed = errored = 0   # backend-reachability accounting (see below)
     for tool in tools:
         points = injection_points(tool)
         # Per-tool context: concurrent tools must NOT share a mutated baseline.
         baseline = await _calibrate(session, tool, gate) if (calibrate and points) else None
         tool_ctx = replace(ctx, baseline=baseline)
+        if baseline is not None:
+            probed += 1
+            if _CONN_ERR.search(baseline.response or ""):
+                errored += 1
         for point in points:
             for check in checks:
                 for probe in check.generate(point, tool_ctx):
@@ -123,6 +155,22 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
                         timed.append((tool, tool_ctx, check, probe))
                     else:
                         tasks.append(_run_concurrent(tool, tool_ctx, check, probe))
+    # "Empty != secure": if most probed tools returned connection-error-shaped baselines
+    # the backend is effectively down and the active checks proved nothing. Emit one
+    # INFO note so a clean report is not misread. Gated to the full scan (check_ids is
+    # None) so the second, resource-only scan pass does not duplicate it.
+    if check_ids is None and probed and (errored / probed) >= _UNREACHABLE_RATIO:
+        collect(Finding(
+            check="reachability", tool="(scan)", param="(all)",
+            severity=Severity.INFO, confidence=Confidence.TENTATIVE, cwe="",
+            title="Most tools errored on benign calls - active checks inconclusive",
+            payload="(scan diagnostic)",
+            evidence=(f"{errored}/{probed} probed tools returned error-shaped baselines "
+                      f"(backend unreachable, or rejecting the benign probe input). Active injection "
+                      f"checks cannot confirm anything when calls do not reach a working handler; an "
+                      f"EMPTY active-scan result here does NOT mean the target is secure - rely on the "
+                      f"passive capability lens and re-run against a live, correctly-configured backend."),
+            remediation="Re-run with the target's real backend/dependencies live and valid inputs, or treat active-check results as inconclusive."))
     if tasks:
         await asyncio.gather(*tasks)
     # Time-based probes depend on uncontended latency: a concurrent/queued call would

@@ -3,6 +3,37 @@
 All notable changes to mcpsnare are documented here. Versions follow a simple
 0.x scheme (the public interface is not yet frozen).
 
+## 0.4.0 - 2026-07-13 - "passive vetting lens"
+
+Active confirmation is blind to what a server *declares*. Scanning a real target
+(`Demolinator/revit-mcp-server`, a thin MCP proxy whose `execute_revit_code` tool is an
+unsandboxed IronPython `exec()`) returned **zero findings** — the active checks probe
+parameters and need a live sink, so a proxy with the dangerous sink downstream (or no
+backend running) reads as "secure". This release adds manifest-level lenses so an
+adoption/vetting scan is honest.
+
+### Added
+- **Passive capability lens (`capability`).** Reads the tool manifest (name, description,
+  schema) with **zero tool calls** and flags declared high-risk capability: arbitrary
+  code/command execution (CRITICAL, CWE-94), filesystem write/link and destructive ops
+  (HIGH, CWE-73/749), filesystem read and SSRF-capable fetch (MEDIUM, CWE-22/918).
+  Name-verb gated to avoid description false positives; **FIRM** on multiple independent
+  signals, **TENTATIVE** on one. Never **CONFIRMED** — a declared capability is not an
+  exploit proof. On the revit target this turns a 0-finding report into 1 CRITICAL + 5 HIGH.
+- **Passive tool-poisoning lens (`tool_poisoning`).** Flags imperative-injection phrasing
+  ("ignore previous instructions"), invisible/bidirectional unicode, and embedded URLs in
+  tool/parameter descriptions (fed verbatim to the driving LLM). CWE-94, TENTATIVE.
+- **Backend-reachability note (`reachability`).** When ≥80% of probed tools return
+  connection-error-shaped baselines, the scan emits one INFO finding so an empty
+  active-scan result is not misread as "secure" ("empty ≠ secure").
+- New passive-check plumbing: `PassiveCheck` protocol + `PASSIVE_REGISTRY` /
+  `register_passive` in `checks/base.py`, run once per tool from the manifest in
+  `scan_session` before any active probing. No change to the `Finding` model or renderers.
+
+### Notes
+- 20 new tests (`tests/test_passive.py` + engine wiring in `tests/test_engine.py`);
+  suite is now 139 green. Passive findings flow through the existing dedup/report path.
+
 ## 0.3.0 - 2026-06-11 - "mcpsnare"
 
 First PyPI release. The project is renamed and the HTTP transport is now fully

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Callable, Protocol
-from mcpsnare.models import InjectionPoint, Probe, Finding, ToolBaseline
+from mcpsnare.models import InjectionPoint, Probe, Finding, ToolBaseline, ToolInfo
 
 
 @dataclass
@@ -24,4 +24,23 @@ REGISTRY: dict[str, "Check"] = {}
 
 def register(cls):
     REGISTRY[cls.id] = cls()
+    return cls
+
+
+class PassiveCheck(Protocol):
+    """A manifest-level check: inspects a tool's declared surface (name,
+    description, input schema) with ZERO tool calls. Unlike Check, it does not
+    probe an injection point or need a response - it runs once per tool straight
+    from list_tools(). Used for vetting/adoption scans where the dangerous
+    capability a target declares matters even when active probing cannot (or must
+    not) reach a live backend."""
+    id: str
+    def inspect(self, tool: ToolInfo, ctx: "CheckContext") -> list[Finding]: ...
+
+
+PASSIVE_REGISTRY: dict[str, "PassiveCheck"] = {}
+
+
+def register_passive(cls):
+    PASSIVE_REGISTRY[cls.id] = cls()
     return cls

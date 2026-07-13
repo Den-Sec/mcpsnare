@@ -2,7 +2,7 @@
 
 mcpsnare's honesty contract (PRD v1.1, R-F1): every public claim in the README is
 backed by a passing automated test, or it is softened/removed. This file is the
-mapping. Run the suite with `python -m pytest -q` (119 tests as of v1.1).
+mapping. Run the suite with `python -m pytest -q` (139 tests as of v0.4).
 
 ## Confidence taxonomy → backing tests
 
@@ -48,6 +48,11 @@ mapping. Run the suite with `python -m pytest -q` (119 tests as of v1.1).
 | All six checks registered (cmd_injection, ssrf, path_traversal, auth_bypass, info_leak, sql_injection) | `test_all_v1_checks_registered` |
 | Resource templates scanned: a templated URI param is a traversal injection point (R-A6) | `test_resource_tool_view_exposes_templates_as_tools`, `test_engine_confirms_traversal_in_resource_template` |
 | SQL injection: error-based (FIRM on baseline-diff / TENTATIVE pattern-only) + calibrated time-based (CWE-89) | `test_sqli_firm_on_error_signature_diff`, `test_sqli_suppressed_when_error_in_baseline`, `test_sqli_tentative_error_without_baseline`, `test_sqli_time_based_firm_on_calibrated_delay` |
+| Passive `capability` lens: flags declared code-exec (CRITICAL/CWE-94), fs-write (HIGH/CWE-73), destructive (HIGH/CWE-749), fs-read (MEDIUM/CWE-22), SSRF (MEDIUM/CWE-918) from the manifest | `test_capability_flags_code_execution_critical`, `test_capability_flags_filesystem_write_high`, `test_capability_flags_destructive_high`, `test_capability_flags_filesystem_read_medium`, `test_capability_flags_network_ssrf_medium` |
+| Passive `capability`: FIRM on multiple signals, TENTATIVE on one; benign read-only tools not flagged; robust on malformed schema | `test_capability_flags_code_execution_critical`, `test_capability_single_signal_is_tentative`, `test_capability_ignores_benign_readonly_tool`, `test_capability_robust_on_malformed_schema` |
+| Passive `tool_poisoning`: imperative-injection (MEDIUM), hidden/bidi unicode (MEDIUM), bare URL (LOW), scans parameter descriptions; benign not flagged | `test_tool_poisoning_flags_imperative_injection`, `test_tool_poisoning_flags_hidden_unicode`, `test_tool_poisoning_bare_url_is_low`, `test_tool_poisoning_scans_parameter_descriptions`, `test_tool_poisoning_ignores_benign_description` |
+| Passive lenses run from the manifest with zero tool calls — surface a declared code-exec tool even with the backend down | `test_passive_capability_flagged_without_live_backend`, `test_passive_checks_registered` |
+| Backend-reachability note: emitted when most tools return connection-error baselines, suppressed when healthy or when the scan is check-restricted ("empty ≠ secure") | `test_reachability_note_emitted_when_backend_down`, `test_no_reachability_note_when_backend_healthy`, `test_reachability_suppressed_when_check_ids_restricted` |
 
 ## Claims softened or removed in the honesty pass
 
@@ -78,6 +83,11 @@ mapping. Run the suite with `python -m pytest -q` (119 tests as of v1.1).
   misread as "secure."
 - **Info-leak baseline diff is by matched-pattern identity, not matched substring.**
   A real leak of the same shape as a benign baseline placeholder can be missed.
+- **The passive `capability`/`tool_poisoning` lenses are heuristic keyword/regex reads of
+  the manifest, not exploit confirmation.** They surface *declared* capability and are
+  graded FIRM/TENTATIVE, never CONFIRMED. They can miss a dangerous capability a server
+  does not name/describe (e.g. a `ping` tool that shells out but says only "ping a host"),
+  and can over- or under-classify on unusual naming; they are a vetting lead, not a verdict.
 - **HTTP transport is end-to-end tested against a live, in-process streamable-HTTP
   MCP server** (uvicorn on an ephemeral localhost port): a real `http_session`
   list+call round-trip, a confirmed path-traversal scan, a confirmed auth-bypass via
