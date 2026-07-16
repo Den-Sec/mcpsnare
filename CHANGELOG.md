@@ -42,9 +42,12 @@ actually tested". This release closes both.
 - **Confidence-aware dedup.** For a given `(check, tool, param)` a later, stronger oracle
   (e.g. a deferred OOB CONFIRMED) now upgrades an earlier weaker finding (e.g. an inline
   canary FIRM) instead of being dropped by first-write-wins.
+- **Real-OS-shell validation.** cmd-injection is now OOB-confirmed against a real shell
+  (cmd.exe on Windows, `/bin/sh` on POSIX) on the CI matrix, closing the "fake-shell only"
+  caveat for the common (non-PowerShell) shell path.
 
 ### Notes
-- 46 new tests; suite is now 185 green. No breaking changes to callers or report consumers.
+- 47 new tests; suite is now 186 green. No breaking changes to callers or report consumers.
 
 ## 0.4.0 - 2026-07-13 - "passive vetting lens"
 

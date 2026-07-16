@@ -2,7 +2,7 @@
 
 mcpsnare's honesty contract (PRD v1.1, R-F1): every public claim in the README is
 backed by a passing automated test, or it is softened/removed. This file is the
-mapping. Run the suite with `python -m pytest -q` (185 tests as of v0.5).
+mapping. Run the suite with `python -m pytest -q` (186 tests as of v0.5).
 
 ## Confidence taxonomy → backing tests
 
@@ -37,6 +37,7 @@ mapping. Run the suite with `python -m pytest -q` (185 tests as of v0.5).
 | `--rate` request-rate throttle honored across concurrency + calibration (R-E2) | `test_engine_rate_limit_caps_request_rate` |
 | CLI exposes `--concurrency`/`--rate`/`--oob-timeout`/`--oob-poll-interval` (rate must be > 0) | `test_cli_parses_scale_flags`, `test_cli_rejects_nonpositive_rate` |
 | Cross-OS payloads (POSIX + cmd.exe + PowerShell) generated and confirmed via OOB | `test_cmdi_oob_payloads_cover_posix_cmd_powershell`, `test_engine_confirms_powershell_oob`, `test_engine_confirms_cmd_exe_oob` |
+| cmd-injection confirmed against a REAL OS shell (cmd.exe / sh executes the payload, real OOB callback; skipped without curl) | `test_cmd_injection_confirmed_via_real_os_shell` |
 | Per-payload OOB tokens identify the firing separator | `test_cmdi_per_payload_tokens_identify_separator` |
 | Late / remote OOB callbacks are caught (poll-until-hit, bounded timeout) | `test_engine_poll_catches_late_oob_callback`, `test_engine_defers_oob_eval_for_delayed_callback` |
 | A clean target yields no finding (bounded, no false positive) | `test_engine_poll_bounded_when_no_callback` |
@@ -73,9 +74,14 @@ mapping. Run the suite with `python -m pytest -q` (185 tests as of v0.5).
 
 ## Known limitations (honest caveats)
 
-- **Windows payloads are validated for generation and OOB-confirmation wiring, not
-  executed against a real cmd.exe / PowerShell host in CI.** Real-shell validation is
-  a follow-up.
+- **cmd-injection is OOB-confirmed against a REAL OS shell** (cmd.exe on Windows,
+  `/bin/sh` on POSIX): `test_cmd_injection_confirmed_via_real_os_shell` scans a fixture whose
+  `ping` runs its argument through `subprocess(shell=True)` with a real local OOB listener, so
+  a confirmed finding means an injected payload actually executed in the shell and called back.
+  It runs on the CI matrix and skips only where `curl` (the payload's outbound tool) is absent.
+  Residual: the fixture shells via cmd.exe on Windows, so the **PowerShell-specific** payloads
+  (`iwr`, `curl.exe` via `;`, `Start-Sleep`) are still validated only for generation, not
+  against a real PowerShell host.
 - **Real interactsh OOB: client crypto is CI-tested; the live round-trip is manual.**
   mcpsnare ships a real interactsh client (RSA-OAEP / AES-256-CTR) whose crypto is
   unit-tested in CI (`test_interactsh_client.py`), and the full path was manually
