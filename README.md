@@ -234,9 +234,13 @@ baseline-calibration, and false-positive-suppression paths end to end — over *
 stdio and a live in-process streamable-HTTP server, on Linux and Windows in CI. See
 [docs/claims-matrix.md](docs/claims-matrix.md) for the claim-to-test mapping.
 
-It has also been smoke-tested against the real `@modelcontextprotocol/server-everything`
-reference server (13 tools, 2 resource templates) — clean run, zero false positives. See
-[docs/smoke-run.md](docs/smoke-run.md).
+It has also been run against a corpus of **real, official `@modelcontextprotocol` servers** —
+which confirmed an unauthenticated SSRF in the reference server, surfaced the declared dangerous
+capabilities of the filesystem/memory/github servers with **zero false positives** (the
+filesystem sandbox correctly held against path-traversal), and turned up two robustness bugs in
+mcpsnare itself (now fixed). The honest field report is in
+[docs/real-world-scan-2026-07.md](docs/real-world-scan-2026-07.md); an earlier smoke run against
+`server-everything` is in [docs/smoke-run.md](docs/smoke-run.md).
 
 ## Roadmap
 
