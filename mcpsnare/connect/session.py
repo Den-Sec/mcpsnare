@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
+from mcp.shared.exceptions import McpError
+from mcp.types import METHOD_NOT_FOUND
 
 from mcpsnare.models import ToolInfo
 
@@ -34,7 +36,16 @@ class Session:
         return "\n".join(p for p in parts if p)
 
     async def list_resource_templates(self):
-        resp = await self._cs.list_resource_templates()
+        try:
+            resp = await self._cs.list_resource_templates()
+        except McpError as e:
+            # `resources/templates/list` is OPTIONAL in the MCP spec; a tools-only server
+            # (the common case) answers "Method not found". Treat that as "no resource
+            # templates" instead of letting it abort the whole scan. Any other MCP error
+            # is a real failure and propagates.
+            if e.error.code == METHOD_NOT_FOUND:
+                return []
+            raise
         return [(t.name, t.uriTemplate) for t in resp.resourceTemplates]
 
     async def read_resource(self, uri):

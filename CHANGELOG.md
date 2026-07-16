@@ -46,8 +46,20 @@ actually tested". This release closes both.
   (cmd.exe on Windows, `/bin/sh` on POSIX) on the CI matrix, closing the "fake-shell only"
   caveat for the common (non-PowerShell) shell path.
 
+### Fixed
+- **Crash on tools-only servers.** `resources/templates/list` is optional in the MCP spec;
+  a tools-only server (most real servers) answers "Method not found". mcpsnare treated that
+  as fatal and aborted the whole scan (discarding the first pass's findings too). It now
+  tolerates it and continues. Found by scanning real servers — the FastMCP fixtures always
+  registered a resources handler, so this path was never exercised before. A tools-only
+  low-level fixture now guards the regression.
+- **Ungraceful failure when a target won't start.** A server that exits before the MCP
+  handshake (e.g. missing credentials) now yields a clean `[!] Could not connect to the
+  target ...` message and a non-zero exit, instead of a raw `ExceptionGroup` traceback.
+  Internal errors still surface their traceback (they are not swallowed).
+
 ### Notes
-- 47 new tests; suite is now 186 green. No breaking changes to callers or report consumers.
+- 52 new tests; suite is now 191 green. No breaking changes to callers or report consumers.
 
 ## 0.4.0 - 2026-07-13 - "passive vetting lens"
 

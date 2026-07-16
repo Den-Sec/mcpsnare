@@ -2,7 +2,7 @@
 
 mcpsnare's honesty contract (PRD v1.1, R-F1): every public claim in the README is
 backed by a passing automated test, or it is softened/removed. This file is the
-mapping. Run the suite with `python -m pytest -q` (186 tests as of v0.5).
+mapping. Run the suite with `python -m pytest -q` (191 tests as of v0.5).
 
 ## Confidence taxonomy → backing tests
 
@@ -46,6 +46,8 @@ mapping. Run the suite with `python -m pytest -q` (186 tests as of v0.5).
 | Per-tool baseline calibration (latency + benign response) | `test_engine_calibrates_once_per_tool`, `test_engine_populates_baseline_response_and_latency`, `test_engine_calibration_can_be_disabled` |
 | `--aggressive` gates blocking time-based probes; default is non-blocking only | `test_cmdi_default_omits_blocking_sleep_probes`, `test_cmdi_aggressive_enables_sleep_probes`, `test_engine_plumbs_aggressive_to_checks` |
 | Works over stdio (exercised end-to-end) | `test_stdio_session_lists_and_calls_tools` |
+| Tolerates tools-only servers that don't implement `resources/templates/list` (optional in the spec) instead of crashing the scan | `test_list_resource_templates_tolerates_method_not_found`, `test_list_resource_templates_reraises_other_mcp_errors`, `test_scan_tools_only_server_without_resources_does_not_crash` |
+| A target that won't start yields a clean error + non-zero exit, not a raw traceback (internal errors still surface) | `test_cli_run_handles_unstartable_target_gracefully`, `test_connect_error_leaf_unwraps_exception_group` |
 | Streamable HTTP transport wired (session factory; CLI parses `--http`/headers) | `test_http_session_factory_exists`, `test_cli_parses_http_scan` |
 | Works over streamable HTTP (exercised end-to-end against a live in-process MCP server): list+call round-trip, confirmed path-traversal, confirmed auth-bypass via dual-session unauth, full CLI `--http` scan (dual-session with `--header` and single-session without) | `test_http_server_round_trip_list_and_call`, `test_scan_confirms_path_traversal_over_http`, `test_scan_confirms_auth_bypass_over_http_dual_session`, `test_cli_http_scan_confirms_findings_json`, `test_cli_http_scan_no_header_single_session` |
 | Reports in console / JSON / SARIF / Markdown | `test_json_report_structure`, `test_sarif_is_valid_json_with_rules`, `test_markdown_contains_title_and_severity` |

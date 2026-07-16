@@ -4,7 +4,21 @@ import os
 import shlex
 import sys
 
+from mcp.shared.exceptions import McpError
+
 from mcpsnare.report.render import to_json, to_sarif, to_markdown
+
+# Target-side / connection failures (server won't start, exits before the handshake, endpoint
+# unreachable, protocol error). These get a clean message; anything else (a mcpsnare logic bug:
+# AttributeError/KeyError/...) is deliberately NOT caught here, so its traceback stays visible.
+_CONNECT_ERRORS = (ConnectionError, OSError, EOFError, McpError)
+
+
+def _connect_error_leaf(exc):
+    """Unwrap anyio task-group ExceptionGroups down to the underlying failure."""
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        exc = exc.exceptions[0]
+    return exc
 
 
 def _positive_float(s):
@@ -109,6 +123,14 @@ async def _run(args):
                                                    aggressive=args.aggressive, concurrency=args.concurrency,
                                                    rate=args.rate, check_ids=["path_traversal", "info_leak"],
                                                    target=args.http)
+    except Exception as e:
+        leaf = _connect_error_leaf(e)
+        if isinstance(leaf, _CONNECT_ERRORS):
+            print(f"[!] Could not connect to the target ({type(leaf).__name__}: {leaf}). "
+                  "Check the --stdio command / --http URL and any environment the server needs "
+                  "(some servers exit without their credentials).", file=sys.stderr)
+            raise SystemExit(2)
+        raise  # unexpected internal error: let the traceback surface it
     finally:
         if oob_cm:
             oob_cm.__exit__(None, None, None)

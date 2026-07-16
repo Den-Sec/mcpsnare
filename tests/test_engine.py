@@ -408,6 +408,23 @@ async def test_engine_confirms_traversal_in_resource_template():
     assert confirmed[0].param == "path"   # the templated URI param is the injection point
 
 
+_TOOLS_ONLY_SERVER = str(Path(__file__).parent / "fixtures" / "tools_only_server" / "server.py")
+
+
+@pytest.mark.asyncio
+async def test_scan_tools_only_server_without_resources_does_not_crash():
+    # Regression (found scanning real servers): a tools-only server answers "Method not
+    # found" to resources/templates/list (optional in the MCP spec). The resource-scan pass
+    # the CLI runs must tolerate that, not abort the whole scan. Exercises the real stdio +
+    # ResourceToolView path that crashed on sequential-thinking/filesystem/github.
+    async with stdio_session([sys.executable, _TOOLS_ONLY_SERVER]) as session:
+        tool_scan = await scan_session(session, oob=None, transport="stdio")
+        res_scan = await scan_session(ResourceToolView(session), oob=None, transport="stdio",
+                                      check_ids=["path_traversal", "info_leak"])
+    assert tool_scan.tools_discovered == 1       # the echo tool
+    assert res_scan.tools_discovered == 0        # no resource templates -> [], not a crash
+
+
 # --- passive lens + reachability wiring (net-new in v0.4) ---
 
 class DeadBackendCodeSession:

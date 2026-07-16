@@ -224,7 +224,7 @@ how you use this tool.
 
 ## Validation
 
-mcpsnare is validated by an automated test suite (186 tests) against bundled
+mcpsnare is validated by an automated test suite (191 tests) against bundled
 deliberately-vulnerable fixture servers in `tests/fixtures/`. The suite exercises
 command injection (including cross-OS cmd.exe / PowerShell payloads), code/eval-sink
 injection (OOB-confirmed against a real `eval` sink), SSRF, path traversal, info-leak,

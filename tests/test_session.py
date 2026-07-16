@@ -81,3 +81,34 @@ def test_session_read_resource_flattens_text():
     s = Session(_CS())
     assert asyncio.run(s.read_resource("file:///x")) == "resource body"
     assert asyncio.run(s.list_resource_templates()) == []
+
+
+def test_list_resource_templates_tolerates_method_not_found():
+    # A tools-only server (most real MCP servers) does not implement the optional
+    # resources/templates/list method and answers "Method not found". mcpsnare must treat
+    # that as "no resource templates", NOT crash the whole scan.
+    import asyncio
+    from mcpsnare.connect.session import Session
+    from mcp.shared.exceptions import McpError
+    from mcp.types import ErrorData, METHOD_NOT_FOUND
+
+    class _CS:
+        async def list_resource_templates(self):
+            raise McpError(ErrorData(code=METHOD_NOT_FOUND, message="Method not found"))
+
+    assert asyncio.run(Session(_CS()).list_resource_templates()) == []
+
+
+def test_list_resource_templates_reraises_other_mcp_errors():
+    # Only method-not-found is tolerated; a real error must not be silently swallowed.
+    import asyncio
+    from mcpsnare.connect.session import Session
+    from mcp.shared.exceptions import McpError
+    from mcp.types import ErrorData, INTERNAL_ERROR
+
+    class _CS:
+        async def list_resource_templates(self):
+            raise McpError(ErrorData(code=INTERNAL_ERROR, message="boom"))
+
+    with pytest.raises(McpError):
+        asyncio.run(Session(_CS()).list_resource_templates())

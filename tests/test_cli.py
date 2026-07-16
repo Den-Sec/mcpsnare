@@ -44,3 +44,26 @@ def test_scan_header_summarizes_metadata():
                    aggressive=True, time_based_skipped=0)
     h = scan_header(r)
     assert "python s.py" in h and "3 tool" in h and "2 reachable" in h and "cmd_injection" in h
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_cli_run_handles_unstartable_target_gracefully(capsys):
+    # A target that never starts (bogus command / server that exits before the handshake)
+    # must give a clean error + non-zero exit, not a raw ExceptionGroup traceback.
+    from mcpsnare.cli import build_parser, _run
+    args = build_parser().parse_args(
+        ["scan", "--stdio", "mcpsnare_no_such_command_xyz123", "--oob", "none"])
+    with pytest.raises(SystemExit):
+        await _run(args)
+    assert "Could not connect to the target" in capsys.readouterr().err
+
+
+def test_connect_error_leaf_unwraps_exception_group():
+    from mcpsnare.cli import _connect_error_leaf
+    inner = ConnectionError("closed")
+    group = ExceptionGroup("boom", [inner])
+    assert _connect_error_leaf(group) is inner
+    assert _connect_error_leaf(inner) is inner   # plain exception passes through
