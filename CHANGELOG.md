@@ -15,6 +15,13 @@ All notable changes to mcpsnare are documented here. Versions follow a simple
   are unchanged. The resolved value is recorded in `ScanResult.target_os` and in the JSON,
   SARIF and Markdown scan metadata.
 
+### Fixed
+- **Fresh installs crashed at startup.** The dependency was declared as `mcp>=1.0.0` with no
+  upper bound, so since MCP Python SDK 2.0 (August 2026) a new install of 0.5.0 pulled SDK 2.x,
+  which removed `mcp.shared.exceptions.McpError`, and `mcpsnare` failed with an `ImportError`
+  before scanning anything. The dependency is now `mcp>=1.27,<2`, the range the test suite runs
+  against. Support for SDK 2.x is tracked separately.
+
 ### Changed
 - **One schema classifier for baselines and injection points.** `_baseline` and `_walk` in
   `inject/mapper.py` now share `_node_kind`, so the benign value built for a schema node and the
