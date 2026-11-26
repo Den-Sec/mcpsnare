@@ -3,6 +3,27 @@
 All notable changes to mcpsnare are documented here. Versions follow a simple
 0.x scheme (the public interface is not yet frozen).
 
+## 0.6.0 - 2026-11-26
+
+### Added
+- **`--target-os {all,posix,windows,auto}`.** Command injection now sends only the shell
+  payloads that can run on the target's OS family. `posix` drops the PowerShell-only payloads
+  (`iwr`, `curl.exe`, `Start-Sleep`), `windows` drops the POSIX-only ones (`; curl`, `$(...)`,
+  `sleep`); payloads valid on both (`& curl`, `| curl`) stay in both. `auto` uses this
+  machine's OS for `--stdio`, where the server is a local child process, and sends every family
+  over `--http`, where the server's OS is unknown. The default stays `all`, so existing scans
+  are unchanged. The resolved value is recorded in `ScanResult.target_os` and in the JSON,
+  SARIF and Markdown scan metadata.
+
+### Changed
+- **One schema classifier for baselines and injection points.** `_baseline` and `_walk` in
+  `inject/mapper.py` now share `_node_kind`, so the benign value built for a schema node and the
+  injection points found in it can no longer drift apart (the source of a v0.5 review finding).
+
+### Docs
+- Field report: noted that upstream hardened `gzip-file-as-resource` (#5295, October 2026), so
+  the July SSRF result does not reproduce against current releases with default settings.
+
 ## 0.5.0 - 2026-07-13 - "confirm the code sink + honest reports"
 
 The passive lens *flagged* an `execute_revit_code`-style tool; the active checks could not

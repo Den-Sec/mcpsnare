@@ -250,3 +250,23 @@ def test_baseline_typeless_open_map_is_empty_object():
               "required": ["bag"]}
     assert build_baseline(schema) == {"bag": {}}
     assert "bag.mcpsnare" in _paths(schema)   # and the two stay in sync
+
+
+# --- shared _node_kind helper (keeps _baseline and _walk in sync) ---
+from mcpsnare.inject.mapper import _node_kind
+
+
+def test_node_kind_explicit_and_list_types():
+    assert _node_kind({"type": "integer"}) == "integer"
+    assert _node_kind({"type": ["null", "string"]}) == "string"
+    assert _node_kind({"type": ["null"]}) is None
+    assert _node_kind({"type": ["null"]}, list_default="string") == "string"
+
+
+def test_node_kind_infers_typeless_containers():
+    assert _node_kind({"properties": {"a": {}}}) == "object"
+    assert _node_kind({"items": {"type": "string"}}) == "array"
+    assert _node_kind({"additionalProperties": True}) == "object"
+    assert _node_kind({"additionalProperties": {"type": "string"}}) == "object"
+    assert _node_kind({"additionalProperties": False}) is None
+    assert _node_kind({}) is None

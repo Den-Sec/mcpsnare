@@ -80,6 +80,13 @@ fetches an arbitrary caller-supplied URL, with no allowlist, over an unauthentic
 channel — reachable internal ranges and cloud-metadata endpoints included. That is textbook
 SSRF (CWE-918).
 
+> **Update, November 2026.** Upstream has since hardened this tool. After issue
+> [#5130](https://github.com/modelcontextprotocol/servers/issues/5130), PR
+> [#5295](https://github.com/modelcontextprotocol/servers/pull/5295) (merged 27 October 2026)
+> makes `gzip-file-as-resource` refuse non-public addresses by default and check every redirect
+> hop. The July result above was obtained against the release current at the time and is not
+> expected to reproduce against current releases with default settings.
+
 Fair characterisation: `everything` is an *example* server, and fetching a URL is arguably its
 intended demo behaviour, so this is not a "0-day in production". But it is a **confirmed,
 unauthenticated SSRF primitive in the reference implementation** — exactly the shape that gets

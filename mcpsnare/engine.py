@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import math
 import re
@@ -77,11 +78,25 @@ async def _calibrate(session, tool, gate=None):
     return ToolBaseline(latency=_aggregate_latency(latencies), response=response)
 
 
+def resolve_target_os(target_os, transport):
+    """Turn the --target-os choice into "posix" | "windows" | "all".
+
+    "auto" means the local platform for stdio, because a stdio server is a child process
+    of this machine. Over HTTP the server's OS is unknown, so "auto" sends every family."""
+    if target_os != "auto":
+        return target_os
+    if transport == "stdio":
+        return "windows" if sys.platform == "win32" else "posix"
+    return "all"
+
+
 async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=None,
                        check_ids=None, oob_poll_interval=2.5, oob_timeout=20.0, calibrate=True,
-                       aggressive=False, concurrency=4, rate=None, target=""):
+                       aggressive=False, concurrency=4, rate=None, target="", target_os="all"):
+    target_os = resolve_target_os(target_os, transport)
     ctx = CheckContext(oob=oob, transport=transport,
-                       call_tool_unauth=call_tool_unauth, aggressive=aggressive)
+                       call_tool_unauth=call_tool_unauth, aggressive=aggressive,
+                       target_os=target_os)
     tools = await session.list_tools()
     checks = [c for cid, c in REGISTRY.items() if not check_ids or cid in check_ids]
     # Any selected check that emits blocking time-based probes only under --aggressive
@@ -248,6 +263,7 @@ async def scan_session(session, oob=None, transport="stdio", call_tool_unauth=No
         tools_reachable=probed - errored,
         checks_executed=[c.id for c in checks] + [c.id for c in passive_checks],
         aggressive=aggressive,
+        target_os=target_os,
         # default scan skips blocking time-based probes: report the injection points left
         # un-exercised by them so an empty result is not misread as "secure".
         time_based_skipped=points_total if (tb_active and not aggressive) else 0,

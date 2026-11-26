@@ -117,6 +117,7 @@ class ScanResult:
     checks_executed: list = field(default_factory=list)
     aggressive: bool = False
     time_based_skipped: int = 0
+    target_os: str = "all"
 
     def __iter__(self):
         return iter(self.findings)
@@ -136,7 +137,8 @@ class ScanResult:
                     and self.tools_reachable == other.tools_reachable
                     and self.checks_executed == other.checks_executed
                     and self.aggressive == other.aggressive
-                    and self.time_based_skipped == other.time_based_skipped)
+                    and self.time_based_skipped == other.time_based_skipped
+                    and self.target_os == other.target_os)
         if isinstance(other, list):
             return list(self.findings) == other  # back-compat: `findings == []`
         return NotImplemented
@@ -152,5 +154,6 @@ class ScanResult:
                 checks_executed=_dedup_preserve(list(self.checks_executed) + list(other.checks_executed)),
                 aggressive=self.aggressive or other.aggressive,
                 time_based_skipped=self.time_based_skipped + other.time_based_skipped,
+                target_os=self.target_os if self.target_os == other.target_os else "all",
             )
         return NotImplemented

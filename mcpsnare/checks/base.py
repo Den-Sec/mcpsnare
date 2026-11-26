@@ -11,6 +11,7 @@ class CheckContext:
     call_tool_unauth: Callable[[str, dict], str] | None = None
     baseline: ToolBaseline | None = None
     aggressive: bool = False
+    target_os: str = "all"   # "posix" | "windows" | "all": which shell payloads to send
 
 
 class Check(Protocol):

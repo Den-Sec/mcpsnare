@@ -210,6 +210,10 @@ makes the target reach back to a listener mcpsnare controls.
 - `--oob {local,interactsh,none}` — OOB confirmation backend (`local` default).
 - `--aggressive` — also send blocking time-based (sleep) probes; by default mcpsnare
   sends only non-blocking OOB/canary/pattern probes (time-based detection is aggressive-only).
+- `--target-os {all,posix,windows,auto}` — which shell payload families command injection sends
+  (default `all`). `posix` and `windows` drop payloads that cannot run on that OS, which cuts the
+  probe count; `auto` uses this machine's OS for `--stdio` (the server is a local child process)
+  and `all` for `--http`, where the server's OS is unknown. The choice is recorded in the scan metadata.
 - `--concurrency N` — max concurrent probe requests (default 4). Time-based probes run serially.
 - `--rate R` — cap to R requests/second (default unlimited).
 - `--oob-timeout S` / `--oob-poll-interval S` — how long (default 20s) / how often (default 2.5s) to poll for OOB callbacks.
@@ -224,7 +228,7 @@ how you use this tool.
 
 ## Validation
 
-mcpsnare is validated by an automated test suite (191 tests) against bundled
+mcpsnare is validated by an automated test suite (203 tests) against bundled
 deliberately-vulnerable fixture servers in `tests/fixtures/`. The suite exercises
 command injection (including cross-OS cmd.exe / PowerShell payloads), code/eval-sink
 injection (OOB-confirmed against a real `eval` sink), SSRF, path traversal, info-leak,
@@ -246,7 +250,7 @@ mcpsnare itself (now fixed). The honest field report is in
 
 - Tool-scope / permission-boundary checks (which tools a token may reach).
 - Additional OOB providers and richer time-based oracles.
-- Real-shell (cmd.exe / PowerShell) validation of the Windows command-injection payloads in CI.
+- Real-shell PowerShell validation of the Windows command-injection payloads in CI.
 
 ## License
 

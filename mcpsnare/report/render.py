@@ -38,6 +38,7 @@ def _scan_meta(scan):
         "tools_reachable": scan.tools_reachable,
         "checks_executed": list(scan.checks_executed),
         "aggressive": scan.aggressive,
+        "target_os": scan.target_os,
         "time_based_skipped": scan.time_based_skipped,
         "notes": _scan_notes(scan),
     }
@@ -87,6 +88,7 @@ def to_markdown(result) -> str:
                   f"- **Tools:** {scan.tools_discovered} discovered, {scan.tools_reachable} reachable",
                   f"- **Checks:** {', '.join(scan.checks_executed)}",
                   f"- **Aggressive:** {scan.aggressive}",
+                  f"- **Target OS payloads:** {scan.target_os}",
                   f"- **Time-based points skipped:** {scan.time_based_skipped}", ""]
         notes = _scan_notes(scan)
         for note in notes:

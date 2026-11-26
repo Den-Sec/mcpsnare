@@ -2,7 +2,7 @@
 
 mcpsnare's honesty contract (PRD v1.1, R-F1): every public claim in the README is
 backed by a passing automated test, or it is softened/removed. This file is the
-mapping. Run the suite with `python -m pytest -q` (191 tests as of v0.5).
+mapping. Run the suite with `python -m pytest -q` (203 tests as of v0.6).
 
 ## Confidence taxonomy → backing tests
 
@@ -28,6 +28,8 @@ mapping. Run the suite with `python -m pytest -q` (191 tests as of v0.5).
 | Schema-valid baselines reach the handler (enum/const/format/nested/`$ref`) | `test_baseline_honors_enum`, `test_baseline_honors_const`, `test_baseline_honors_format_uri`, `test_baseline_recurses_required_nested_object`, `test_baseline_resolves_ref` |
 | OOB callback confirms blind command injection | `test_cmdi_confirmed_on_oob_hit`, `test_engine_confirms_cmd_oob_and_names_payload` |
 | OOB confirms SSRF | `test_ssrf_injects_oob_url_and_confirms` |
+| `--target-os` sends only the shell payloads of the chosen OS family; `auto` = local OS for stdio, all for HTTP; recorded in scan metadata | `test_posix_drops_powershell_only_payloads`, `test_windows_drops_posix_only_payloads`, `test_sleep_payloads_follow_target_os`, `test_auto_resolves_to_local_platform_for_stdio_and_all_for_http`, `test_target_os_is_reported_in_scan_metadata` |
+| Baseline builder and injection-point walker classify every schema node the same way | `test_node_kind_explicit_and_list_types`, `test_node_kind_infers_typeless_containers` |
 | Canary confirms path traversal | `test_traversal_confirmed_on_passwd_canary` |
 | Missing authentication via unauthenticated differential (tolerant to volatile fields, not record-id; works over async transport) | `test_auth_bypass_confirmed_when_unauth_succeeds`, `test_auth_bypass_firm_when_only_timestamp_differs`, `test_auth_bypass_none_when_only_record_id_differs`, `test_auth_bypass_none_when_unauth_denied`, `test_engine_auth_bypass_fires_over_async_unauth` |
 | Payload embedded in a format-valid value reaches handlers behind validation (R-A4) | `test_injection_point_embed_prefixes_valid_value`, `test_cmdi_emits_embed_variant_for_formatted_param` |

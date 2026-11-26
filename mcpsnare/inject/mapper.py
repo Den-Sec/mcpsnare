@@ -81,6 +81,27 @@ def _freeform_value(schema):
     return {"type": "string"}                        # typed/typeless object, no declared shape
 
 
+def _node_kind(schema, list_default=None):
+    """The JSON type a (resolved) schema node describes, shared by _baseline and _walk so
+    the value built for a node and the injection points found in it can never disagree.
+
+    A type list picks its first non-null member (``list_default`` if it has none). A typeless
+    node is inferred from its shape: ``properties`` -> object, ``items`` -> array, an open
+    ``additionalProperties`` -> object. Anything else stays None."""
+    t = schema.get("type")
+    if isinstance(t, list):
+        return next((x for x in t if x != "null"), list_default)
+    if t is not None:
+        return t
+    if "properties" in schema:
+        return "object"
+    if "items" in schema:
+        return "array"
+    if _open_additional(schema) is not None:
+        return "object"
+    return None
+
+
 def _string_value(schema):
     fmt = schema.get("format")
     if fmt in _FORMAT_SAMPLES:
@@ -98,16 +119,7 @@ def _baseline(schema, root, depth):
         return schema["const"]
     if schema.get("enum"):
         return schema["enum"][0]
-    t = schema.get("type")
-    if isinstance(t, list):
-        t = next((x for x in t if x != "null"), "string")
-    if t is None:  # typeless schema: infer container kind from shape (keep in sync with _walk)
-        if "properties" in schema:
-            t = "object"
-        elif "items" in schema:
-            t = "array"
-        elif _open_additional(schema) is not None:  # typeless open map -> object (build {})
-            t = "object"
+    t = _node_kind(schema, list_default="string")
     if t == "string":
         return _string_value(schema)
     if t == "integer":
@@ -150,16 +162,7 @@ def _walk(schema, path, root, depth, out, seen_refs):
             return
         seen_refs = seen_refs | {ref}
     schema = _branch(_resolve(schema, root), root)
-    t = schema.get("type")
-    if isinstance(t, list):
-        t = next((x for x in t if x != "null"), None)
-    if t is None:  # typeless schema: infer container kind from shape (keep in sync with _baseline)
-        if "properties" in schema:
-            t = "object"
-        elif "items" in schema:
-            t = "array"
-        elif _open_additional(schema) is not None:  # typeless open map (only additionalProperties)
-            t = "object"
+    t = _node_kind(schema)
     if t == "string":
         if not schema.get("enum") and "const" not in schema:
             out.append(path)

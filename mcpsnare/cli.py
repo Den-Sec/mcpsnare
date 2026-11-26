@@ -59,6 +59,9 @@ def build_parser():
                    help="interactsh/OAST server domain for --oob interactsh (default oast.fun)")
     s.add_argument("--aggressive", action="store_true",
                    help="also send blocking time-based (sleep) probes; default sends only non-blocking OOB/canary/pattern probes")
+    s.add_argument("--target-os", choices=["all", "posix", "windows", "auto"], default="all",
+                   help="shell payload families for command injection: all (default), posix, windows, "
+                        "or auto (this machine's OS for --stdio, all for --http)")
     s.add_argument("--concurrency", type=int, default=4,
                    help="max concurrent probe requests (default 4)")
     s.add_argument("--rate", type=_positive_float, default=None,
@@ -95,11 +98,11 @@ async def _run(args):
                 findings = await scan_session(sess, oob=oob, transport="stdio", aggressive=args.aggressive,
                                               concurrency=args.concurrency, rate=args.rate,
                                               oob_timeout=args.oob_timeout,
-                                              oob_poll_interval=args.oob_poll_interval, target=args.stdio)
+                                              oob_poll_interval=args.oob_poll_interval, target=args.stdio, target_os=args.target_os)
                 findings += await scan_session(ResourceToolView(sess), oob=oob, transport="stdio",
                                                aggressive=args.aggressive, concurrency=args.concurrency,
                                                rate=args.rate, check_ids=["path_traversal", "info_leak"],
-                                               target=args.stdio)
+                                               target=args.stdio, target_os=args.target_os)
         else:
             headers = dict(h.split(":", 1) for h in args.header)
             async with http_session(args.http, headers=headers) as sess:
@@ -109,20 +112,20 @@ async def _run(args):
                                                       call_tool_unauth=sess_unauth.call_tool, aggressive=args.aggressive,
                                                       concurrency=args.concurrency, rate=args.rate,
                                                       oob_timeout=args.oob_timeout,
-                                                      oob_poll_interval=args.oob_poll_interval, target=args.http)
+                                                      oob_poll_interval=args.oob_poll_interval, target=args.http, target_os=args.target_os)
                         findings += await scan_session(ResourceToolView(sess), oob=oob, transport="http",
                                                        aggressive=args.aggressive, concurrency=args.concurrency,
                                                        rate=args.rate, check_ids=["path_traversal", "info_leak"],
-                                                       target=args.http)
+                                                       target=args.http, target_os=args.target_os)
                 else:
                     findings = await scan_session(sess, oob=oob, transport="http", aggressive=args.aggressive,
                                                   concurrency=args.concurrency, rate=args.rate,
                                                   oob_timeout=args.oob_timeout,
-                                                  oob_poll_interval=args.oob_poll_interval, target=args.http)
+                                                  oob_poll_interval=args.oob_poll_interval, target=args.http, target_os=args.target_os)
                     findings += await scan_session(ResourceToolView(sess), oob=oob, transport="http",
                                                    aggressive=args.aggressive, concurrency=args.concurrency,
                                                    rate=args.rate, check_ids=["path_traversal", "info_leak"],
-                                                   target=args.http)
+                                                   target=args.http, target_os=args.target_os)
     except Exception as e:
         leaf = _connect_error_leaf(e)
         if isinstance(leaf, _CONNECT_ERRORS):
